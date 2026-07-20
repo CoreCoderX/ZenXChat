@@ -2,7 +2,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "com.yourname.openrouterchat",
-  appName: "OR Chat",
+  appName: "ZenXChat",
   // Points to the built static files — bundled inside the APK
   webDir: "out",
 
@@ -23,7 +23,7 @@ const config: CapacitorConfig = {
 
   plugins: {
     CapacitorHttp: {
-      enabled: true,
+      enabled: false,
     },
   },
 };

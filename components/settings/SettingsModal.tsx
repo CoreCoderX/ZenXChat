@@ -21,8 +21,17 @@ const TABS: { id: SettingsTab; label: string; icon: React.ElementType }[] = [
 
 export default function SettingsModal() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("models");
-  const { activeModal, closeModal } = useUIStore();
+  const { activeModal, closeModal, modalData } = useUIStore();
   const isOpen = activeModal === "settings";
+
+  // Sync active tab with the opening modal data payload
+  useEffect(() => {
+    if (isOpen) {
+      const tab = (modalData?.tab as SettingsTab) || "models";
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setActiveTab(tab);
+    }
+  }, [isOpen, modalData]);
 
   // Close on Escape
   useEffect(() => {

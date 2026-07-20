@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">OR Chat</string>
-    <string name="title_activity_main">OR Chat</string>
+    <string name="app_name">ZenXChat</string>
+    <string name="title_activity_main">ZenXChat</string>
     <string name="package_name">com.yourname.openrouterchat</string>
     <string name="custom_url_scheme">com.yourname.openrouterchat</string>
 </resources>

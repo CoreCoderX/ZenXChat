@@ -1,39 +1,57 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { motion } from "framer-motion";
-import {
-  MessageSquare,
-  MoreHorizontal,
-  Pencil,
-  Trash2,
-  Check,
-  X,
-} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Pencil, Trash2, Check, X, MessageSquare } from "lucide-react";
 import { Conversation } from "@/types";
 import { useChatStore } from "@/store/chatStore";
+import { useUIStore } from "@/store/uiStore";
 import { cn } from "@/lib/utils";
-import Button from "@/components/ui/Button";
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function getRelativeTime(ts: number): string {
+  const diff = Date.now() - ts;
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "now";
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d === 1) return "1d";
+  if (d < 7) return `${d}d`;
+  return new Date(ts).toLocaleDateString("en", { month: "short", day: "numeric" });
+}
+
+function getShortModel(model: string): string {
+  const name = model.includes("/") ? model.split("/").pop()! : model;
+  // Strip common suffixes to shorten
+  return name
+    .replace(/-instruct|-chat|-turbo|-latest|-preview/gi, "")
+    .slice(0, 18);
+}
+
+// ── ConversationItem ──────────────────────────────────────────────────────────
 
 interface ConversationItemProps {
   conversation: Conversation;
   isActive: boolean;
   onSelect?: () => void;
+  index: number;
 }
 
-export default function ConversationItem({
+export function ConversationItem({
   conversation,
   isActive,
   onSelect,
+  index,
 }: ConversationItemProps) {
-  const [showMenu, setShowMenu] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(conversation.title);
   const inputRef = useRef<HTMLInputElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
 
-  const { selectConversation, deleteConversation, renameConversation } =
-    useChatStore();
+  const { selectConversation, deleteConversation, renameConversation } = useChatStore();
+  const { openModal } = useUIStore();
 
   useEffect(() => {
     if (isRenaming) {
@@ -42,16 +60,6 @@ export default function ConversationItem({
     }
   }, [isRenaming]);
 
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowMenu(false);
-      }
-    };
-    if (showMenu) document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showMenu]);
-
   const handleSelect = () => {
     if (isRenaming) return;
     selectConversation(conversation.id);
@@ -59,118 +67,240 @@ export default function ConversationItem({
   };
 
   const handleRenameSubmit = () => {
-    renameConversation(conversation.id, renameValue);
+    if (renameValue.trim()) renameConversation(conversation.id, renameValue.trim());
     setIsRenaming(false);
   };
 
+  const msgCount = conversation.messages?.length ?? 0;
+
   return (
     <motion.div
-      initial={{ opacity: 0, x: -8 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.15 }}
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.15, delay: Math.min(index * 0.025, 0.25) }}
       className={cn(
-        "group relative flex items-center gap-2 px-2 rounded-lg cursor-pointer transition-colors",
-        "min-h-[44px]", // Touch target
+        "group relative mx-2 mb-px rounded-lg cursor-pointer transition-colors duration-100",
         isActive
-          ? "bg-neutral-100 dark:bg-dark-tertiary"
-          : "hover:bg-neutral-50 dark:hover:bg-dark-secondary active:bg-neutral-100 dark:active:bg-dark-tertiary",
+          ? "bg-neutral-900 dark:bg-white/10"
+          : "hover:bg-neutral-100 dark:hover:bg-white/5",
       )}
       onClick={handleSelect}
     >
-      <MessageSquare className="size-3.5 flex-shrink-0 text-ink-muted dark:text-neutral-500" />
-
-      <div className="flex-1 min-w-0 py-2">
+      <div className="pl-4 pr-2 py-2.5">
         {isRenaming ? (
-          <input
-            ref={inputRef}
-            value={renameValue}
-            onChange={(e) => setRenameValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleRenameSubmit();
-              if (e.key === "Escape") {
-                setRenameValue(conversation.title);
-                setIsRenaming(false);
-              }
-            }}
-            onBlur={handleRenameSubmit}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full text-xs bg-transparent outline-none border-b border-neutral-300 dark:border-neutral-600 text-ink dark:text-neutral-100 pb-0.5"
-          />
+          /* ── Rename mode ── */
+          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <input
+              ref={inputRef}
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleRenameSubmit();
+                if (e.key === "Escape") { setRenameValue(conversation.title); setIsRenaming(false); }
+              }}
+              onBlur={handleRenameSubmit}
+              className="flex-1 text-[11px] bg-transparent outline-none border-b border-neutral-400 dark:border-neutral-500 text-ink dark:text-neutral-100 pb-px"
+            />
+            <button onClick={handleRenameSubmit} className="text-emerald-500 hover:text-emerald-400 p-0.5 flex-shrink-0">
+              <Check className="size-3" />
+            </button>
+            <button onClick={() => { setRenameValue(conversation.title); setIsRenaming(false); }} className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 p-0.5 flex-shrink-0">
+              <X className="size-3" />
+            </button>
+          </div>
         ) : (
-          <p className="text-xs text-ink dark:text-neutral-200 truncate">
-            {conversation.title}
-          </p>
+          /* ── Normal mode ── */
+          <div className="flex items-center gap-2">
+            {/* Title */}
+            <p className={cn(
+              "text-[12px] font-medium truncate flex-1 leading-snug",
+              isActive
+                ? "text-white dark:text-neutral-100"
+                : "text-neutral-800 dark:text-neutral-300"
+            )}>
+              {conversation.title}
+            </p>
+
+            {/* Right side: time + actions — always visible */}
+            <div className="flex items-center gap-1.5 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+              {/* Timestamp */}
+              <span className={cn(
+                "text-[10px] font-mono",
+                isActive
+                  ? "text-white/50 dark:text-white/40"
+                  : "text-neutral-400 dark:text-neutral-600"
+              )}>
+                {getRelativeTime(conversation.updatedAt)}
+              </span>
+
+              {/* Divider */}
+              <span className={cn(
+                "text-[10px]",
+                isActive ? "text-white/20" : "text-neutral-300 dark:text-neutral-700"
+              )}>·</span>
+
+              {/* Action buttons — always shown */}
+              <div className="flex items-center gap-0.5">
+                <button
+                  onClick={() => setIsRenaming(true)}
+                  title="Rename"
+                  className={cn(
+                    "flex items-center justify-center size-6 rounded-md transition-colors",
+                    isActive
+                      ? "text-white/50 hover:text-white hover:bg-white/10"
+                      : "text-neutral-400 dark:text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-200 dark:hover:bg-white/10"
+                  )}
+                >
+                  <Pencil className="size-3" />
+                </button>
+                <button
+                  onClick={() => {
+                    openModal("delete", {
+                      title: "Delete chat?",
+                      message: `Are you sure you want to delete "${conversation.title}"? This cannot be undone.`,
+                      confirmText: "Delete",
+                      cancelText: "Cancel",
+                      onConfirm: () => deleteConversation(conversation.id),
+                    });
+                  }}
+                  title="Delete"
+                  className={cn(
+                    "flex items-center justify-center size-6 rounded-md transition-colors",
+                    isActive
+                      ? "text-white/50 hover:text-red-300 hover:bg-red-500/20"
+                      : "text-neutral-400 dark:text-neutral-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30"
+                  )}
+                >
+                  <Trash2 className="size-3" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Message count — subtle, below title */}
+        {!isRenaming && (
+          <div className="flex items-center gap-1 mt-0.5">
+            <MessageSquare className={cn(
+              "size-2.5 flex-shrink-0",
+              isActive ? "text-white/30 dark:text-white/30" : "text-neutral-400 dark:text-neutral-600"
+            )} />
+            <span className={cn(
+              "text-[9px] font-mono",
+              isActive ? "text-white/40 dark:text-white/30" : "text-neutral-400 dark:text-neutral-600"
+            )}>
+              {msgCount} {msgCount === 1 ? "message" : "messages"}
+            </span>
+            <span className={cn(
+              "text-[9px] font-mono truncate ml-auto max-w-[90px]",
+              isActive ? "text-white/30 dark:text-white/30" : "text-neutral-400 dark:text-neutral-600"
+            )}>
+              {getShortModel(conversation.model)}
+            </span>
+          </div>
         )}
       </div>
-
-      {isRenaming ? (
-        <div
-          className="flex items-center gap-1"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Button variant="ghost" size="xs" onClick={handleRenameSubmit}>
-            <Check className="size-3 text-emerald-500" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={() => {
-              setRenameValue(conversation.title);
-              setIsRenaming(false);
-            }}
-          >
-            <X className="size-3" />
-          </Button>
-        </div>
-      ) : (
-        <div className="relative" ref={menuRef}>
-          <Button
-            variant="ghost"
-            size="xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowMenu(!showMenu);
-            }}
-            className={cn(
-              "opacity-0 group-hover:opacity-100 transition-opacity",
-              // Always visible on touch devices
-              "lg:opacity-0 opacity-100",
-              (isActive || showMenu) && "opacity-100",
-            )}
-          >
-            <MoreHorizontal className="size-3.5" />
-          </Button>
-
-          {showMenu && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: -4 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              transition={{ duration: 0.1 }}
-              className="absolute right-0 top-full mt-1 z-50 w-36 bg-white dark:bg-dark-secondary border border-neutral-200 dark:border-dark-border rounded-xl shadow-xl overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                onClick={() => {
-                  setIsRenaming(true);
-                  setShowMenu(false);
-                }}
-                className="flex items-center gap-2 w-full px-3 py-3 text-xs text-ink dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-dark-tertiary active:bg-neutral-100 transition-colors"
-              >
-                <Pencil className="size-3" /> Rename
-              </button>
-              <button
-                onClick={() => {
-                  deleteConversation(conversation.id);
-                  setShowMenu(false);
-                }}
-                className="flex items-center gap-2 w-full px-3 py-3 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 active:bg-red-100 transition-colors"
-              >
-                <Trash2 className="size-3" /> Delete
-              </button>
-            </motion.div>
-          )}
-        </div>
-      )}
     </motion.div>
+  );
+}
+
+// ── Date section label ────────────────────────────────────────────────────────
+
+function SectionLabel({ label }: { label: string }) {
+  return (
+    <div className="px-4 pt-4 pb-1.5 select-none">
+      <span className="text-[9px] font-semibold uppercase tracking-widest text-neutral-400 dark:text-neutral-600">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+// ── ConversationList ──────────────────────────────────────────────────────────
+
+interface ConversationListProps {
+  conversations: Conversation[];
+  activeId: string | null;
+  isLoading?: boolean;
+  onSelect?: () => void;
+}
+
+function groupByDate(conversations: Conversation[]): { label: string; items: Conversation[] }[] {
+  const now = Date.now();
+  const day = 86_400_000;
+  const buckets: { label: string; items: Conversation[] }[] = [
+    { label: "Today", items: [] },
+    { label: "Yesterday", items: [] },
+    { label: "This week", items: [] },
+    { label: "This month", items: [] },
+    { label: "Older", items: [] },
+  ];
+
+  for (const conv of conversations) {
+    const diff = now - conv.updatedAt;
+    if (diff < day) buckets[0].items.push(conv);
+    else if (diff < 2 * day) buckets[1].items.push(conv);
+    else if (diff < 7 * day) buckets[2].items.push(conv);
+    else if (diff < 30 * day) buckets[3].items.push(conv);
+    else buckets[4].items.push(conv);
+  }
+
+  return buckets.filter((b) => b.items.length > 0);
+}
+
+export default function ConversationList({
+  conversations,
+  activeId,
+  isLoading,
+  onSelect,
+}: ConversationListProps) {
+  if (isLoading) {
+    return (
+      <div className="px-2 py-3 space-y-1">
+        {[80, 65, 72].map((w, i) => (
+          <div key={i} className="flex items-center gap-2 mx-2 py-2.5">
+            <div className={`h-3 bg-neutral-100 dark:bg-neutral-800 rounded animate-pulse`} style={{ width: `${w}%` }} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (conversations.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 px-4 gap-2">
+        <MessageSquare className="size-6 text-neutral-300 dark:text-neutral-700" />
+        <p className="text-xs text-neutral-400 dark:text-neutral-600 text-center">
+          No chats yet
+        </p>
+      </div>
+    );
+  }
+
+  const groups = groupByDate(conversations);
+  let globalIndex = 0;
+
+  return (
+    <AnimatePresence initial={false}>
+      <div className="py-1">
+        {groups.map(({ label, items }) => (
+          <div key={label}>
+            <SectionLabel label={label} />
+            {items.map((conv) => {
+              const idx = globalIndex++;
+              return (
+                <ConversationItem
+                  key={conv.id}
+                  conversation={conv}
+                  isActive={conv.id === activeId}
+                  onSelect={onSelect}
+                  index={idx}
+                />
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </AnimatePresence>
   );
 }

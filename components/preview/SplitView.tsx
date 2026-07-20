@@ -9,6 +9,8 @@ import {
   Minimize2,
   ArrowLeft,
   ArrowRight,
+  Columns,
+  AppWindow,
 } from "lucide-react";
 import { useUIStore } from "@/store/uiStore";
 import LivePreview from "./LivePreview";
@@ -46,7 +48,7 @@ export default function SplitView() {
 body{margin-top:44px!important;box-sizing:border-box;}
 </style>
 <div id="__bar">
-  <span>ORChat · Preview</span>
+  <span>ZenXChat · Preview</span>
   <div class="btns">
     <button onclick="history.back()">← Back</button>
     <button onclick="location.reload()">↺ Refresh</button>
@@ -181,14 +183,33 @@ function Toolbar({
   onFullscreen,
   onClose,
 }: ToolbarProps) {
+  const { previewMode, setPreviewMode } = useUIStore();
+
   return (
     <div
-      className="flex items-center gap-1 px-2 py-2 border-b border-neutral-200 dark:border-dark-border bg-white dark:bg-dark flex-shrink-0"
+      className="flex items-center gap-1 px-2 py-2 border-b border-neutral-200/60 dark:border-dark-border/40 bg-neutral-50 dark:bg-dark-secondary flex-shrink-0"
       style={{ flexShrink: 0 }}
     >
       {/* Language badge */}
       <div className="flex-1 px-2.5 py-1 rounded-md bg-neutral-100 dark:bg-dark-tertiary text-[11px] text-ink-muted dark:text-neutral-600 truncate select-none">
         {language ? `${language.toUpperCase()} Preview` : "Live Preview"}
+      </div>
+
+      {/* Dock/Undock Toggle button (visible only on desktop) */}
+      <div className="hidden lg:block">
+        <Tooltip content={previewMode === "split" ? "Float window" : "Dock to side"}>
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() => setPreviewMode(previewMode === "split" ? "floating" : "split")}
+          >
+            {previewMode === "split" ? (
+              <AppWindow className="size-3.5" />
+            ) : (
+              <Columns className="size-3.5" />
+            )}
+          </Button>
+        </Tooltip>
       </div>
 
       <Tooltip content="Refresh">

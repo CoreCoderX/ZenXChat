@@ -1,7 +1,6 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
 /* ── Base ────────────────────────────────────────────────────────────────── */
 
 @layer base {
@@ -48,8 +47,8 @@
   }
 
   body {
-    background-color: #ffffff;
-    color: #0a0a0a;
+    background-color: #f8fafc;
+    color: #0f172a;
     font-feature-settings: "rlig" 1, "calt" 1;
     /* Prevent body from scrolling — app handles its own scroll */
     overflow: hidden;
@@ -210,7 +209,7 @@
   .markdown-body {
     font-size: 0.875rem;
     line-height: 1.7;
-    color: #0a0a0a;
+    color: #0f172a;
     word-break: break-word;
     overflow-wrap: break-word;
   }
@@ -227,7 +226,7 @@
     font-weight: 600;
     margin-top: 1rem;
     margin-bottom: 0.5rem;
-    color: #0a0a0a;
+    color: #0f172a;
   }
   .dark .markdown-body h1,
   .dark .markdown-body h2,
@@ -244,7 +243,7 @@
   .markdown-body ol { list-style-type: decimal; }
   .markdown-body li { margin-bottom: 0.25rem; }
 
-  .markdown-body strong { font-weight: 600; color: #0a0a0a; }
+  .markdown-body strong { font-weight: 600; color: #0f172a; }
   .dark .markdown-body strong { color: #fafafa; }
   .markdown-body em { font-style: italic; }
 

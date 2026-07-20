@@ -36,6 +36,7 @@ interface ChatStore {
     updates: Partial<Message>,
   ) => void;
   deleteMessage: (conversationId: string, messageId: string) => void;
+  truncateMessagesAfter: (conversationId: string, messageId: string) => void;
   setMessageStreaming: (
     conversationId: string,
     messageId: string,
@@ -230,6 +231,21 @@ export const useChatStore = create<ChatStore>()(
         }));
       },
 
+      truncateMessagesAfter: (conversationId: string, messageId: string) => {
+        set((state) => ({
+          conversations: state.conversations.map((c) => {
+            if (c.id !== conversationId) return c;
+            const idx = c.messages.findIndex((m) => m.id === messageId);
+            if (idx === -1) return c;
+            return {
+              ...c,
+              messages: c.messages.slice(0, idx + 1),
+              updatedAt: Date.now(),
+            };
+          }),
+        }));
+      },
+
       setMessageStreaming: (
         conversationId: string,
         messageId: string,
@@ -288,7 +304,7 @@ export const useChatStore = create<ChatStore>()(
       },
     }),
     {
-      name: "openrouter-chats",
+      name: "zenxchat-chats",
       // Limit stored messages to avoid localStorage overflow
       partialize: (state) => ({
         conversations: state.conversations.map((c) => ({

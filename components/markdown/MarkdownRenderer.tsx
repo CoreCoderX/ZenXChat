@@ -37,7 +37,7 @@ export default function MarkdownRenderer({
       const isBlock = !!match || code.includes("\n");
 
       if (isBlock) {
-        return <CodeBlock code={code} language={lang} />;
+        return <CodeBlock code={code} language={lang} isStreaming={isStreaming} />;
       }
 
       // Inline code

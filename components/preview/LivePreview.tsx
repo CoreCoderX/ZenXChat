@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { FileCode2 } from "lucide-react";
 
 interface LivePreviewProps {
   content: string;
@@ -150,11 +151,10 @@ export default function LivePreview({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: 24,
           }}
           className="border-neutral-200 dark:border-dark-border"
         >
-          🖼️
+          <FileCode2 className="size-6 text-neutral-400 dark:text-neutral-600" />
         </div>
         <div>
           <p className="text-sm font-medium">No preview yet</p>

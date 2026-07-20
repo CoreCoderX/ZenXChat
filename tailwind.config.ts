@@ -19,12 +19,12 @@ const config: Config = {
       colors: {
         // Light mode surfaces
         surface: {
-          DEFAULT: "#ffffff",
-          secondary: "#f9f9f9",
-          tertiary: "#f3f3f3",
-          border: "#e5e5e5",
+          DEFAULT: "#f8fafc",     // slate-50
+          secondary: "#f1f5f9",   // slate-100
+          tertiary: "#e2e8f0",    // slate-200
+          border: "#cbd5e1",      // slate-300
         },
-        // Dark mode surfaces
+        // Dark mode surfaces (reverted from blue-black)
         dark: {
           DEFAULT: "#0a0a0a",
           secondary: "#111111",
@@ -32,12 +32,12 @@ const config: Config = {
           quaternary: "#222222",
           border: "#2a2a2a",
         },
-        // Text shades
+        // High contrast text shades
         ink: {
-          DEFAULT: "#0a0a0a",
-          secondary: "#525252",
-          tertiary: "#737373",
-          muted: "#a3a3a3",
+          DEFAULT: "#0f172a",     // slate-900 (light primary text)
+          secondary: "#334155",   // slate-700 (light secondary text)
+          tertiary: "#475569",    // slate-600
+          muted: "#64748b",       // slate-500
         },
       },
 

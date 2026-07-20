@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, KeyboardEvent, useState, useEffect } from "react";
+import { useRef, useCallback, KeyboardEvent, useState, useEffect, useMemo } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import {
   ArrowUp,
@@ -10,10 +10,13 @@ import {
   Image as ImageIcon,
   FileText,
   Globe,
+  Brain,
+  Plus,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useChatStore } from "@/store/chatStore";
 import { useUIStore } from "@/store/uiStore";
 import { AttachedFile } from "@/types";
 import Button from "@/components/ui/Button";
@@ -21,9 +24,7 @@ import Tooltip from "@/components/ui/Tooltip";
 import { v4 as uuidv4 } from "uuid";
 
 interface ChatInputProps {
-  value: string;
-  onChange: (value: string) => void;
-  onSend: (attachments?: AttachedFile[], webSearch?: boolean) => void;
+  onSend: (content: string, attachments?: AttachedFile[], webSearch?: boolean) => void;
   isGenerating: boolean;
   onStop: () => void;
   placeholder?: string;
@@ -50,22 +51,75 @@ const ACCEPTED_TYPES = [
 ];
 
 export default function ChatInput({
-  value,
-  onChange,
   onSend,
   isGenerating,
   onStop,
   placeholder = "Message…",
 }: ChatInputProps) {
+  const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [attachments, setAttachments] = useState<AttachedFile[]>([]);
   const [webSearchOn, setWebSearchOn] = useState(false);
+  const [thinkingOn, setThinkingOn] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [showOptions, setShowOptions] = useState(false);
 
-  const { sendOnEnter } = useSettingsStore();
+  const { sendOnEnter, selectedModel } = useSettingsStore();
+  const conversation = useChatStore((s) => s.getActiveConversation());
   const { isGenerating: globalGenerating } = useUIStore();
+
+  const currentModelId = conversation?.model || selectedModel;
+
+  // Dynamically calculate model capabilities based on model ID
+  const capabilities = useMemo(() => {
+    const id = currentModelId.toLowerCase();
+    
+    // Check files / vision support
+    const supportsFiles = 
+      id.includes("gemini") || 
+      id.includes("gpt-4o") || 
+      id.includes("claude-3") || 
+      id.includes("vision") || 
+      id.includes("pixtral") || 
+      id.includes("grok-2-vision");
+
+    // Check search / research support
+    const supportsSearch = 
+      id.includes("online") || 
+      id.includes("search") || 
+      id.includes("perplexity") || 
+      id.includes("grok") || 
+      id.includes("gemini-2.0") || 
+      id.includes("gemini-2.5");
+
+    // Check thinking / reasoning support
+    const supportsThinking = 
+      id.includes("r1") || 
+      id.includes("o1") || 
+      id.includes("o3") || 
+      id.includes("reasoning") || 
+      id.includes("thinking");
+
+    return { supportsFiles, supportsSearch, supportsThinking };
+  }, [currentModelId]);
+
+  // Check if current input represents a multiline card shape instead of a single-line pill
+  const isMultiline = useMemo(() => {
+    return attachments.length > 0 || value.includes("\n") || value.length > 80;
+  }, [attachments, value]);
+
+  // Sync capabilities with states
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setWebSearchOn(capabilities.supportsSearch);
+  }, [capabilities.supportsSearch]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setThinkingOn(capabilities.supportsThinking);
+  }, [capabilities.supportsThinking]);
 
   const canSend =
     (value.trim().length > 0 || attachments.length > 0) && !isGenerating;
@@ -182,13 +236,20 @@ export default function ChatInput({
 
   const handleSend = useCallback(() => {
     if (!canSend) return;
-    onSend(attachments.length > 0 ? attachments : undefined, webSearchOn);
+    onSend(value, attachments.length > 0 ? attachments : undefined, webSearchOn);
+    setValue("");
     setAttachments([]);
-  }, [canSend, onSend, attachments, webSearchOn]);
+  }, [canSend, onSend, value, attachments, webSearchOn]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && sendOnEnter && !e.shiftKey) {
+      // Disable send-on-enter for mobile virtual keyboards to allow newlines
+      const isMobileDevice = typeof window !== "undefined" && (
+        /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || 
+        window.matchMedia("(max-width: 1023px)").matches
+      );
+
+      if (e.key === "Enter" && sendOnEnter && !e.shiftKey && !isMobileDevice) {
         e.preventDefault();
         handleSend();
       }
@@ -196,229 +257,295 @@ export default function ChatInput({
     [sendOnEnter, handleSend],
   );
 
-  // ── Format file size ──────────────────────────────────────────────────────
-
-  const formatSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
 
   return (
     <div
-      className={cn(
-        "relative transition-colors",
-        isDragging && "bg-neutral-50 dark:bg-dark-tertiary",
-      )}
+      className="relative w-full"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Drag overlay */}
-      {isDragging && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl border-2 border-dashed border-neutral-400 dark:border-neutral-600 bg-neutral-50/90 dark:bg-dark-tertiary/90">
-          <p className="text-sm font-medium text-ink-secondary dark:text-neutral-400">
-            Drop files here
-          </p>
-        </div>
-      )}
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept={ACCEPTED_TYPES.join(",")}
+        onChange={handleFileInputChange}
+        className="hidden"
+      />
 
-      {/* Attachment previews */}
-      <AnimatePresence>
-        {attachments.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className="flex flex-wrap gap-2 px-1 pb-2 overflow-hidden"
-          >
-            {attachments.map((file) => (
-              <motion.div
-                key={file.id}
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                className="relative group flex items-center gap-1.5 bg-neutral-100 dark:bg-dark-tertiary rounded-xl px-2.5 py-1.5 pr-1 max-w-[200px]"
-              >
-                {/* File icon or thumbnail */}
-                {file.preview ? (
-                  <img
-                    src={file.preview}
-                    alt={file.name}
-                    className="size-8 object-cover rounded-lg flex-shrink-0"
-                  />
-                ) : file.type.startsWith("image/") ? (
-                  <ImageIcon className="size-4 text-ink-tertiary flex-shrink-0" />
-                ) : (
-                  <FileText className="size-4 text-ink-tertiary flex-shrink-0" />
-                )}
-
-                {/* File info */}
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs text-ink dark:text-neutral-100 truncate font-medium">
-                    {file.name}
-                  </p>
-                  <p className="text-[10px] text-ink-muted dark:text-neutral-600">
-                    {formatSize(file.size)}
-                  </p>
-                </div>
-
-                {/* Remove button */}
-                <button
-                  onClick={() => removeAttachment(file.id)}
-                  className="flex-shrink-0 size-5 rounded-full bg-neutral-200 dark:bg-dark-quaternary flex items-center justify-center hover:bg-neutral-300 dark:hover:bg-neutral-700 transition-colors ml-1"
-                >
-                  <X className="size-3 text-ink-secondary dark:text-neutral-400" />
-                </button>
-              </motion.div>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Input box */}
+      {/* Main floating card container */}
       <div
         className={cn(
-          "flex items-end gap-2 px-3 py-2.5 rounded-2xl border transition-colors",
-          "bg-white dark:bg-dark-secondary",
-          "border-neutral-200 dark:border-dark-border",
+          "flex flex-col gap-1.5 p-1.5 border transition-[border-color,background-color,box-shadow,transform] duration-200",
+          isMultiline ? "rounded-[24px]" : "rounded-full",
+          "bg-white/95 dark:bg-dark-secondary/95 backdrop-blur-md",
+          "border-neutral-200/80 dark:border-dark-border/80",
           "focus-within:border-neutral-300 dark:focus-within:border-neutral-700",
-          "shadow-sm",
+          "shadow-lg dark:shadow-2xl focus-within:shadow-xl",
+          isDragging && cn(
+            "bg-neutral-50/90 dark:bg-dark-tertiary/90 border-dashed border-neutral-400 dark:border-neutral-600",
+            isMultiline ? "rounded-[24px]" : "rounded-full"
+          )
         )}
       >
-        {/* Hidden file input */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept={ACCEPTED_TYPES.join(",")}
-          onChange={handleFileInputChange}
-          className="hidden"
-        />
+        {/* Drag overlay */}
+        {isDragging && (
+          <div className={cn(
+            "absolute inset-0 z-10 flex items-center justify-center bg-neutral-50/95 dark:bg-dark-tertiary/95 pointer-events-none",
+            isMultiline ? "rounded-[24px]" : "rounded-full"
+          )}>
+            <p className="text-sm font-medium text-ink-secondary dark:text-neutral-400 animate-pulse">
+              Drop files to attach
+            </p>
+          </div>
+        )}
 
-        {/* Attach button */}
-        <Tooltip content="Attach files (images, text, code)">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-            className={cn(
-              "flex-shrink-0 self-end mb-0.5",
-              attachments.length > 0 && "text-ink dark:text-neutral-100",
-            )}
-            disabled={isGenerating}
-          >
-            <Paperclip className="size-4" />
-          </Button>
-        </Tooltip>
-
-        {/* Web search toggle */}
-        <Tooltip
-          content={
-            webSearchOn
-              ? "Web search: ON"
-              : "Web search: OFF (uses search-capable models)"
-          }
-        >
-          <Button
-            variant={webSearchOn ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setWebSearchOn((v) => !v)}
-            className={cn(
-              "flex-shrink-0 self-end mb-0.5 gap-1",
-              webSearchOn
-                ? "bg-neutral-100 dark:bg-dark-tertiary text-ink dark:text-neutral-100"
-                : "text-ink-tertiary dark:text-neutral-600",
-            )}
-            disabled={isGenerating}
-          >
-            <Globe className="size-4" />
-            <span className="hidden sm:block text-xs">
-              {webSearchOn ? "Search: On" : "Search"}
-            </span>
-          </Button>
-        </Tooltip>
-
-        {/* Textarea */}
-        <TextareaAutosize
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={
-            webSearchOn
-              ? "Ask anything — I'll search the web…"
-              : attachments.length > 0
-                ? "Ask about the attached files…"
-                : placeholder
-          }
-          minRows={1}
-          maxRows={8}
-          className={cn(
-            "flex-1 resize-none bg-transparent outline-none",
-            "text-sm text-ink dark:text-neutral-100",
-            "placeholder:text-ink-muted dark:placeholder:text-neutral-600",
-            "py-1.5 px-1 leading-relaxed",
-            // Prevent iOS zoom
-            "text-[16px] md:text-[14px]",
-          )}
-          disabled={globalGenerating && !isGenerating}
-        />
-
-        {/* Send / Stop */}
-        <AnimatePresence mode="wait">
-          {isGenerating ? (
+        {/* Attachment previews inside the card (only shown when there are attachments) */}
+        <AnimatePresence>
+          {attachments.length > 0 && (
             <motion.div
-              key="stop"
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.8, opacity: 0 }}
-              transition={{ duration: 0.15 }}
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="flex flex-wrap gap-2 px-1.5 pb-1.5 border-b border-neutral-100 dark:border-dark-border/40 overflow-hidden"
             >
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={onStop}
-                className="flex-shrink-0 self-end mb-0.5"
-              >
-                <Square className="size-3.5" />
-              </Button>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="send"
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.8, opacity: 0 }}
-              transition={{ duration: 0.15 }}
-            >
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleSend}
-                disabled={!canSend}
-                className="flex-shrink-0 self-end mb-0.5"
-                aria-label="Send message"
-              >
-                <ArrowUp className="size-3.5" />
-              </Button>
+              {attachments.map((file) => (
+                <motion.div
+                  key={file.id}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  className="relative group flex items-center gap-1.5 bg-neutral-100 dark:bg-dark-tertiary rounded-xl px-2 py-1 max-w-[180px] border border-neutral-200/50 dark:border-dark-border/30"
+                >
+                  {/* File icon or thumbnail */}
+                  {file.preview ? (
+                    <img
+                      src={file.preview}
+                      alt={file.name}
+                      className="size-6 object-cover rounded flex-shrink-0"
+                    />
+                  ) : file.type.startsWith("image/") ? (
+                    <ImageIcon className="size-3.5 text-ink-tertiary flex-shrink-0" />
+                  ) : (
+                    <FileText className="size-3.5 text-ink-tertiary flex-shrink-0" />
+                  )}
+
+                  {/* File info */}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] text-ink dark:text-neutral-100 truncate font-medium">
+                      {file.name}
+                    </p>
+                  </div>
+
+                  {/* Remove button */}
+                  <button
+                    onClick={() => removeAttachment(file.id)}
+                    className="flex-shrink-0 size-4 rounded-full bg-neutral-200 dark:bg-dark-quaternary flex items-center justify-center hover:bg-neutral-300 dark:hover:bg-neutral-700 transition-colors ml-1"
+                  >
+                    <X className="size-2.5 text-ink-secondary dark:text-neutral-400" />
+                  </button>
+                </motion.div>
+              ))}
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
 
-      {/* Hints */}
-      <p className="text-[10px] text-ink-muted dark:text-neutral-600 text-center mt-1.5 px-2">
-        {webSearchOn && (
-          <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-            🔍 Web search active ·{" "}
-          </span>
-        )}
-        {sendOnEnter
-          ? "Enter to send · Shift+Enter new line"
-          : "Shift+Enter to send"}
-        {" · Paste or drop files"}
-      </p>
+        {/* Linear Row */}
+        <div className="flex items-center gap-1">
+          {/* Capability Buttons Expandable Toggle */}
+          <div className="relative flex items-center flex-shrink-0">
+            <Tooltip content="Show features (Upload, Research, Thinking)">
+              <button
+                type="button"
+                onClick={() => setShowOptions((prev) => !prev)}
+                className="flex items-center justify-center size-8 rounded-full bg-neutral-100 hover:bg-neutral-200 dark:bg-dark-quaternary dark:hover:bg-dark-tertiary text-ink-secondary dark:text-neutral-300 transition-all cursor-pointer"
+              >
+                <Plus className={cn("size-4 transition-transform duration-200", showOptions && "rotate-45")} />
+              </button>
+            </Tooltip>
+
+            {/* Expandable Options Popover Menu */}
+            <AnimatePresence>
+              {showOptions && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute bottom-11 left-0 z-30 w-48 flex flex-col bg-white dark:bg-dark-secondary border border-neutral-200 dark:border-dark-border rounded-xl shadow-lg py-1 overflow-hidden"
+                >
+                  {/* File Upload */}
+                  <button
+                    type="button"
+                    disabled={!capabilities.supportsFiles}
+                    onClick={() => {
+                      fileInputRef.current?.click();
+                      setShowOptions(false);
+                    }}
+                    className={cn(
+                      "flex items-center gap-2.5 px-3 py-2 text-left transition-colors border-b border-neutral-100 dark:border-dark-border/20 last:border-0",
+                      capabilities.supportsFiles
+                        ? "hover:bg-neutral-50 dark:hover:bg-dark-tertiary cursor-pointer"
+                        : "opacity-30 cursor-not-allowed"
+                    )}
+                  >
+                    <Paperclip className={cn(
+                      "size-4 flex-shrink-0",
+                      attachments.length > 0 ? "text-neutral-900 dark:text-white" : "text-ink-secondary dark:text-neutral-400"
+                    )} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-ink dark:text-neutral-200">Upload Files</p>
+                    </div>
+                    {attachments.length > 0 && (
+                      <span className="text-[10px] font-semibold text-neutral-900 dark:text-white bg-neutral-100 dark:bg-dark-tertiary px-1.5 py-0.25 rounded-md">
+                        {attachments.length}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Web Search */}
+                  <button
+                    type="button"
+                    disabled={!capabilities.supportsSearch}
+                    onClick={() => {
+                      setWebSearchOn((prev) => !prev);
+                      setShowOptions(false);
+                    }}
+                    className={cn(
+                      "flex items-center gap-2.5 px-3 py-2 text-left transition-colors border-b border-neutral-100 dark:border-dark-border/20 last:border-0",
+                      capabilities.supportsSearch
+                        ? "hover:bg-neutral-50 dark:hover:bg-dark-tertiary cursor-pointer"
+                        : "opacity-30 cursor-not-allowed"
+                    )}
+                  >
+                    <Globe className={cn(
+                      "size-4 flex-shrink-0",
+                      webSearchOn ? "text-emerald-500" : "text-ink-secondary dark:text-neutral-400"
+                    )} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-ink dark:text-neutral-200">Web Search</p>
+                    </div>
+                    {webSearchOn && (
+                      <span className="text-[9px] font-bold text-emerald-500 uppercase tracking-wider">
+                        Active
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Thinking */}
+                  <button
+                    type="button"
+                    disabled={!capabilities.supportsThinking}
+                    onClick={() => {
+                      setThinkingOn((prev) => !prev);
+                      setShowOptions(false);
+                    }}
+                    className={cn(
+                      "flex items-center gap-2.5 px-3 py-2 text-left transition-colors",
+                      capabilities.supportsThinking
+                        ? "hover:bg-neutral-50 dark:hover:bg-dark-tertiary cursor-pointer"
+                        : "opacity-30 cursor-not-allowed"
+                    )}
+                  >
+                    <Brain className={cn(
+                      "size-4 flex-shrink-0",
+                      thinkingOn ? "text-purple-500" : "text-ink-secondary dark:text-neutral-400"
+                    )} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-ink dark:text-neutral-200">Thinking</p>
+                    </div>
+                    {thinkingOn && (
+                      <span className="text-[9px] font-bold text-purple-500 uppercase tracking-wider">
+                        Active
+                      </span>
+                    )}
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Vertical Divider */}
+          <div className="w-px h-5 bg-neutral-200 dark:bg-dark-border/40 self-center mx-1 flex-shrink-0" />
+
+          {/* Textarea */}
+          <div className="flex-1 min-w-0">
+            <TextareaAutosize
+              ref={textareaRef}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                webSearchOn
+                  ? "Search the web…"
+                  : attachments.length > 0
+                    ? "Ask about the attachments…"
+                    : placeholder
+              }
+              minRows={1}
+              maxRows={6}
+              className={cn(
+                "w-full resize-none bg-transparent outline-none",
+                "text-sm text-ink dark:text-neutral-100",
+                "placeholder:text-ink-muted dark:placeholder:text-neutral-600",
+                "py-1.5 px-1 leading-relaxed",
+                "text-[16px] md:text-[14px]",
+              )}
+              disabled={globalGenerating && !isGenerating}
+            />
+          </div>
+
+          {/* Send / Stop Action Button */}
+          <div className="flex-shrink-0 self-center pl-1">
+            <AnimatePresence mode="wait">
+              {isGenerating ? (
+                <motion.div
+                  key="stop"
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.8, opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={onStop}
+                    className="rounded-xl p-1.5 bg-neutral-900 hover:bg-neutral-800 dark:bg-neutral-100 dark:hover:bg-neutral-200 text-white dark:text-neutral-900 flex items-center justify-center size-8"
+                  >
+                    <Square className="size-3.5 fill-current" />
+                  </Button>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="send"
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.8, opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleSend}
+                    disabled={!canSend}
+                    className={cn(
+                      "rounded-xl p-1.5 transition-all duration-150 flex items-center justify-center size-8",
+                      canSend
+                        ? "bg-neutral-950 hover:bg-neutral-900 text-white dark:bg-neutral-50 dark:hover:bg-white dark:text-neutral-900 shadow-md active:scale-95 cursor-pointer"
+                        : "bg-neutral-100 text-neutral-300 dark:bg-dark-tertiary dark:text-neutral-600 cursor-not-allowed"
+                    )}
+                    aria-label="Send message"
+                  >
+                    <ArrowUp className="size-3.5 stroke-[2.5]" />
+                  </Button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

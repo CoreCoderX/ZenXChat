@@ -1,19 +1,22 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, User } from "lucide-react";
+import { AlertTriangle, User, Pencil } from "lucide-react";
 import { Message } from "@/types";
 import MarkdownRenderer from "@/components/markdown/MarkdownRenderer";
 import MessageActions from "./MessageActions";
 import { cn, formatTimestamp } from "@/lib/utils";
 import { useSettingsStore } from "@/store/settingsStore";
 import { getProviderDisplayName } from "@/lib/models";
+import Button from "@/components/ui/Button";
 
 interface MessageBubbleProps {
   message: Message;
   isLast: boolean;
   onRegenerate?: () => void;
   isGenerating?: boolean;
+  onEdit?: (messageId: string, newContent: string) => void;
 }
 
 function getModelDisplayName(modelId?: string): string {
@@ -38,10 +41,14 @@ export default function MessageBubble({
   isLast,
   onRegenerate,
   isGenerating,
+  onEdit,
 }: MessageBubbleProps) {
   const { showTimestamps } = useSettingsStore();
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
+  
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState(message.content);
 
   // ── User message ──────────────────────────────────────────────────────────
   if (isUser) {
@@ -50,7 +57,7 @@ export default function MessageBubble({
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.15 }}
-        className="w-full px-4 py-2 flex flex-col items-end"
+        className="group/msg w-full px-4 py-2 flex flex-col items-end"
       >
         {/* Label row */}
         <div className="flex items-center gap-1.5 mb-1">
@@ -63,28 +70,79 @@ export default function MessageBubble({
         </div>
 
         {/* Bubble */}
-        <div className="max-w-[85%] bg-neutral-100 dark:bg-dark-tertiary px-4 py-2.5 rounded-2xl rounded-tr-sm text-sm text-ink dark:text-neutral-100 whitespace-pre-wrap break-words selectable">
-          {message.content}
-          {message.attachments && message.attachments.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {message.attachments.map((file) =>
-                file.preview ? (
-                  <img
-                    key={file.id}
-                    src={file.preview}
-                    alt={file.name}
-                    className="max-w-[200px] max-h-[150px] rounded-xl object-cover"
-                  />
-                ) : (
-                  <span
-                    key={file.id}
-                    className="text-[11px] bg-neutral-200 dark:bg-dark-quaternary px-2 py-1 rounded-lg"
+        <div className="relative flex flex-col items-end max-w-[85%]">
+          <div className="bg-neutral-100 dark:bg-dark-tertiary px-4 py-2.5 rounded-2xl rounded-tr-sm text-sm text-ink dark:text-neutral-100 whitespace-pre-wrap break-words selectable w-full">
+            {isEditing ? (
+              <div className="flex flex-col gap-2 min-w-[200px] md:min-w-[300px] py-0.5">
+                <textarea
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  className="w-full text-xs bg-white dark:bg-dark-secondary text-ink dark:text-neutral-100 border border-neutral-300 dark:border-dark-border rounded-xl p-2 focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-700 resize-y min-h-[60px]"
+                  autoFocus
+                />
+                <div className="flex items-center justify-end gap-1.5">
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => setIsEditing(false)}
                   >
-                    📄 {file.name}
-                  </span>
-                ),
-              )}
-            </div>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="xs"
+                    onClick={() => {
+                      if (editText.trim() && onEdit) {
+                        onEdit(message.id, editText.trim());
+                      }
+                      setIsEditing(false);
+                    }}
+                  >
+                    Send
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {message.content}
+                {message.attachments && message.attachments.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {message.attachments.map((file) =>
+                      file.preview ? (
+                        <img
+                          key={file.id}
+                          src={file.preview}
+                          alt={file.name}
+                          className="max-w-[200px] max-h-[150px] rounded-xl object-cover"
+                        />
+                      ) : (
+                        <span
+                          key={file.id}
+                          className="text-[11px] bg-neutral-200 dark:bg-dark-quaternary px-2 py-1 rounded-lg"
+                        >
+                          📄 {file.name}
+                        </span>
+                      ),
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Edit action button (visible on hover below the bubble) */}
+          {!isEditing && onEdit && (
+            <button
+              onClick={() => {
+                setIsEditing(true);
+                setEditText(message.content);
+              }}
+              className="mt-1 flex items-center gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity px-2 py-0.5 rounded hover:bg-neutral-100 dark:hover:bg-dark-quaternary text-[10px] text-ink-tertiary dark:text-neutral-500 cursor-pointer"
+              title="Edit message"
+            >
+              <Pencil className="size-2.5" />
+              <span>Edit</span>
+            </button>
           )}
         </div>
 

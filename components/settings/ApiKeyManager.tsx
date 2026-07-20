@@ -170,6 +170,17 @@ export default function ApiKeyManager() {
         <AnimatePresence>
           {apiKeys.map((key) => {
             const info = keyInfoMap[key.id];
+            
+            const usageVal = info?.usage != null ? Number(info.usage) : 0;
+            const limitVal = info?.limit != null ? Number(info.limit) : null;
+            const remainingVal = info?.limit_remaining != null ? Number(info.limit_remaining) : null;
+            
+            let usedPct = 0;
+            if (limitVal !== null && limitVal > 0) {
+              const spent = limitVal - (remainingVal ?? 0);
+              usedPct = Math.min(100, Math.max(0, Math.round((spent / limitVal) * 100)));
+            }
+
             return (
               <motion.div
                 key={key.id}
@@ -250,56 +261,46 @@ export default function ApiKeyManager() {
                       className="overflow-hidden"
                     >
                       <div className="px-3 pb-3">
-                        <div className="bg-neutral-50 dark:bg-dark-quaternary rounded-lg p-3 space-y-1.5">
-                          <p className="text-[11px] font-medium text-ink-secondary dark:text-neutral-400 uppercase tracking-wider mb-2">
-                            Key Details
-                          </p>
-
-                          {info.label && (
-                            <InfoRow label="Name" value={info.label} />
-                          )}
-
-                          <InfoRow
-                            label="Type"
-                            value={info.is_free_tier ? "Free tier" : "Paid"}
-                            valueClass={
-                              info.is_free_tier
-                                ? "text-amber-600 dark:text-amber-400"
-                                : "text-emerald-600 dark:text-emerald-400"
-                            }
-                          />
-
-                          {info.limit != null && (
-                            <InfoRow
-                              label="Credit limit"
-                              value={`$${Number(info.limit).toFixed(2)}`}
+                        <div className="bg-neutral-50 dark:bg-dark-quaternary rounded-lg p-3.5 space-y-2.5 font-mono text-[10px] border border-neutral-200/50 dark:border-dark-border/30">
+                          {/* Core Details */}
+                          <div className="space-y-1">
+                            <InfoRow label="Key Name" value={info.label ?? key.label ?? "Production"} />
+                            <InfoRow 
+                              label="Account Tier" 
+                              value={info.is_free_tier ? "Free Tier" : "Paid"} 
+                              valueClass={info.is_free_tier ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-emerald-600 dark:text-emerald-400 font-semibold"}
                             />
-                          )}
+                            <InfoRow label="Total Spent" value={`$${usageVal.toFixed(4)}`} />
+                          </div>
 
-                          {info.limit_remaining != null && (
-                            <InfoRow
-                              label="Credits remaining"
-                              value={`$${Number(info.limit_remaining).toFixed(4)}`}
-                              valueClass={
-                                Number(info.limit_remaining) <= 0
-                                  ? "text-red-500"
-                                  : "text-emerald-600 dark:text-emerald-400"
-                              }
-                            />
-                          )}
-
-                          {info.usage != null && (
-                            <InfoRow
-                              label="Usage"
-                              value={`$${Number(info.usage).toFixed(4)}`}
-                            />
-                          )}
-
-                          {info.rate_limit && (
-                            <InfoRow
-                              label="Rate limit"
-                              value={`${info.rate_limit.requests} req / ${info.rate_limit.interval}`}
-                            />
+                          {/* Budget & Progress Bar */}
+                          {limitVal !== null ? (
+                            <div className="space-y-2">
+                              <div className="h-px bg-neutral-200 dark:bg-dark-border/40 my-1" />
+                              <InfoRow label="Credit Limit" value={`$${limitVal.toFixed(2)}`} />
+                              <InfoRow 
+                                label="Credits Remaining" 
+                                value={remainingVal !== null ? `$${remainingVal.toFixed(4)}` : "N/A"} 
+                                valueClass={remainingVal !== null && remainingVal <= 0 ? "text-red-500 font-semibold" : "text-emerald-600 dark:text-emerald-400 font-semibold"}
+                              />
+                              <div className="pt-1 space-y-1">
+                                <div className="flex items-center justify-between text-[9px] text-ink-muted dark:text-neutral-500">
+                                  <span>Usage Progress</span>
+                                  <span className="font-semibold">{usedPct}% Used</span>
+                                </div>
+                                <div className="h-1.5 w-full bg-neutral-200 dark:bg-dark-tertiary rounded-full overflow-hidden">
+                                  <div 
+                                    className="h-full bg-emerald-500 transition-all duration-300"
+                                    style={{ width: `${usedPct}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <div className="h-px bg-neutral-200 dark:bg-dark-border/40 my-1" />
+                              <InfoRow label="Credit Limit" value="Unlimited / Pay-as-you-go" valueClass="text-ink-secondary dark:text-neutral-400" />
+                            </div>
                           )}
 
                           {/* Warning: free tier with no credits */}

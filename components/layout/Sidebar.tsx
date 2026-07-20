@@ -1,12 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Settings, PanelLeftClose, Trash2 } from "lucide-react";
+import { Plus, Settings, PanelLeftClose, Trash2, Search } from "lucide-react";
 import { useChatStore } from "@/store/chatStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useUIStore } from "@/store/uiStore";
 import ConversationList from "./ConversationList";
 import Button from "@/components/ui/Button";
+import Image from "next/image";
 
 export default function Sidebar() {
   const {
@@ -18,11 +20,18 @@ export default function Sidebar() {
   const { selectedModel } = useSettingsStore();
   const { sidebarOpen, toggleSidebar, openModal } = useUIStore();
 
+  const [searchQuery, setSearchQuery] = useState("");
+
   const handleNewChat = () => {
     createConversation(selectedModel);
     // Auto-close sidebar on mobile after creating chat
     if (window.innerWidth < 1024) toggleSidebar();
   };
+
+  // Filter and sort conversations by latest activity (updatedAt descending)
+  const sortedConversations = conversations
+    .filter((c) => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 
   return (
     <>
@@ -56,40 +65,33 @@ export default function Sidebar() {
               // On mobile: fixed overlay; on desktop: part of layout
               "fixed lg:relative z-30 lg:z-auto",
               "top-0 left-0 bottom-0",
+              "rounded-r-xl lg:rounded-r-2xl", // minimal curl as requested
             ].join(" ")}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-3 py-3 border-b border-neutral-100 dark:border-dark-border flex-shrink-0">
+            <div className="flex items-center justify-between px-3 pb-3 pt-[calc(env(safe-area-inset-top)+12px)] lg:pt-3 border-b border-neutral-100 dark:border-dark-border flex-shrink-0">
               <div className="flex items-center gap-2 px-1">
-                <div className="size-5 rounded-md bg-neutral-900 dark:bg-neutral-100 flex items-center justify-center">
-                  <div className="size-2 rounded-full bg-white dark:bg-neutral-900" />
-                </div>
+                <Image
+                  src="/icon.png"
+                  alt="ZenXChat Logo"
+                  width={24}
+                  height={24}
+                  className="rounded-md"
+                  priority
+                />
                 <span className="text-sm font-semibold text-ink dark:text-neutral-100">
-                  OR Chat
+                  ZenXChat
                 </span>
               </div>
-              <Button variant="ghost" size="sm" onClick={toggleSidebar}>
+              <Button variant="ghost" size="sm" onClick={toggleSidebar} className="lg:hidden">
                 <PanelLeftClose className="size-4" />
-              </Button>
-            </div>
-
-            {/* New Chat */}
-            <div className="px-3 pt-3 pb-2 flex-shrink-0">
-              <Button
-                variant="outline"
-                size="md"
-                onClick={handleNewChat}
-                className="w-full justify-start gap-2 min-h-[44px]"
-              >
-                <Plus className="size-4" />
-                New Chat
               </Button>
             </div>
 
             {/* Conversation list — scrollable */}
             <div className="flex-1 min-h-0 sidebar-scroll">
               <ConversationList
-                conversations={conversations}
+                conversations={sortedConversations}
                 activeId={activeConversationId}
                 onSelect={() => {
                   if (window.innerWidth < 1024) toggleSidebar();
@@ -97,34 +99,64 @@ export default function Sidebar() {
               />
             </div>
 
-            {/* Footer */}
-            <div className="border-t border-neutral-100 dark:border-dark-border p-3 space-y-1 flex-shrink-0">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full justify-start min-h-[44px]"
-                onClick={() => {
-                  openModal("settings");
-                  if (window.innerWidth < 1024) toggleSidebar();
-                }}
-              >
-                <Settings className="size-3.5" />
-                Settings
-              </Button>
+            {/* Footer with Search bar and actions */}
+            <div className="border-t border-neutral-100 dark:border-dark-border p-3 space-y-2 flex-shrink-0">
+              {/* History Search Bar */}
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-ink-muted dark:text-neutral-600" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search history..."
+                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-neutral-200 dark:border-dark-border bg-white dark:bg-dark-tertiary text-ink dark:text-neutral-100 placeholder:text-ink-muted dark:placeholder:text-neutral-600 outline-none focus:border-neutral-300 dark:focus:border-neutral-600 transition-colors"
+                />
+              </div>
 
-              {conversations.length > 0 && (
+              {/* Actions row: New Chat & Settings */}
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleNewChat}
+                  className="flex-1 justify-center gap-1 min-h-[36px] px-2"
+                >
+                  <Plus className="size-3.5" />
+                  <span className="text-xs">New Chat</span>
+                </Button>
+
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="w-full justify-start text-ink-tertiary dark:text-neutral-500 min-h-[44px]"
                   onClick={() => {
-                    if (confirm("Clear all conversations?")) {
-                      clearAllConversations();
-                    }
+                    openModal("settings");
+                    if (window.innerWidth < 1024) toggleSidebar();
+                  }}
+                  className="flex-1 justify-center gap-1 min-h-[36px] px-2 border border-neutral-200/50 dark:border-dark-border/40 hover:bg-neutral-100 dark:hover:bg-dark-tertiary"
+                >
+                  <Settings className="size-3.5" />
+                  <span className="text-xs">Settings</span>
+                </Button>
+              </div>
+
+              {/* Clear conversations */}
+              {conversations.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="w-full justify-center text-[10px] text-red-400 hover:text-red-500 hover:bg-red-50/50 dark:hover:bg-red-950/20"
+                  onClick={() => {
+                    openModal("delete", {
+                      title: "Clear all chats?",
+                      message: "Are you sure you want to clear all conversations? This cannot be undone.",
+                      confirmText: "Clear All",
+                      cancelText: "Cancel",
+                      onConfirm: () => clearAllConversations(),
+                    });
                   }}
                 >
-                  <Trash2 className="size-3.5" />
-                  Clear all
+                  <Trash2 className="size-3" />
+                  <span>Clear All</span>
                 </Button>
               )}
             </div>

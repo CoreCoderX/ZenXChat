@@ -20,6 +20,9 @@ interface UIStore {
   splitViewEnabled: boolean;
   toggleSplitView: () => void;
 
+  previewMode: "split" | "floating";
+  setPreviewMode: (mode: "split" | "floating") => void;
+
   // Store both content AND language for the preview
   previewContent: string;
   previewLanguage: string | null;
@@ -57,6 +60,9 @@ export const useUIStore = create<UIStore>((set, get) => ({
   splitViewEnabled: false,
   toggleSplitView: () =>
     set((s) => ({ splitViewEnabled: !s.splitViewEnabled })),
+
+  previewMode: "split",
+  setPreviewMode: (mode) => set({ previewMode: mode }),
 
   // Preview content + language
   previewContent: "",

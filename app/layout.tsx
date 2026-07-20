@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ORChat — AI Chat powered by OpenRouter",
+  title: "ZenXChat — AI Chat powered by OpenRouter",
   description:
     "A minimal, modern AI chat interface. Access 200+ models including Claude, GPT-4, Gemini, Llama and more — all from one place.",
   keywords: [
@@ -19,17 +19,17 @@ export const metadata: Metadata = {
   authors: [{ name: "Sivaprakash", url: "https://github.com/CoreCoderX" }],
   creator: "Sivaprakash",
   openGraph: {
-    title: "ORChat — AI Chat powered by OpenRouter",
+    title: "ZenXChat — AI Chat powered by OpenRouter",
     description:
       "Access 200+ AI models from one minimal interface. Free tier available.",
-    url: "https://github.com/yourusername/orchat",
-    siteName: "ORChat",
+    url: "https://github.com/yourusername/ZenXChat",
+    siteName: "ZenXChat",
     images: [{ url: "/og-image.png", width: 1200, height: 630 }],
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "ORChat — AI Chat powered by OpenRouter",
+    title: "ZenXChat — AI Chat powered by OpenRouter",
     description: "Access 200+ AI models from one minimal interface.",
     images: ["/og-image.png"],
   },

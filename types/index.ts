@@ -157,6 +157,7 @@ export type ModalType =
   | "rename"
   | "delete"
   | "system-prompt"
+  | "confirm"
   | null;
 
 export interface UIState {

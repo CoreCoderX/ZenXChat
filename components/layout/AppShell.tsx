@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useTheme } from "@/hooks/useTheme";
 import { useUIStore } from "@/store/uiStore";
@@ -7,6 +8,7 @@ import { useSettingsStore } from "@/store/settingsStore";
 import Sidebar from "@/components/layout/Sidebar";
 import ChatArea from "@/components/chat/ChatArea";
 import SettingsModal from "@/components/settings/SettingsModal";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 import Button from "@/components/ui/Button";
 import Tooltip from "@/components/ui/Tooltip";
 import { Settings, Sun, Moon, Monitor, PanelLeft } from "lucide-react";
@@ -15,16 +17,28 @@ export default function AppShell() {
   useKeyboardShortcuts();
 
   const { theme, toggleTheme } = useTheme();
-  const { openModal, sidebarOpen, toggleSidebar } = useUIStore();
+  const { openModal, sidebarOpen, toggleSidebar, setSidebarOpen } = useUIStore();
   const { apiKeys } = useSettingsStore();
   const hasApiKey = apiKeys.length > 0;
+
+  // Lock sidebar to open in desktop mode (>= 1024px width)
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) {
+        setSidebarOpen(true);
+      }
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [setSidebarOpen]);
 
   const ThemeIcon = theme === "dark" ? Moon : theme === "light" ? Sun : Monitor;
 
   return (
     // Root: fill viewport, no overflow, no position:fixed (let CSS handle it)
     <div
-      className="flex bg-white dark:bg-dark"
+      className="flex bg-slate-50 dark:bg-dark"
       style={{
         width: "100vw",
         height: "100dvh", // dvh respects mobile browser chrome
@@ -39,54 +53,15 @@ export default function AppShell() {
 
       {/* Main */}
       <div className="flex flex-col flex-1 min-w-0 h-full overflow-hidden">
-        {/* Toolbar */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-100 dark:border-dark-border flex-shrink-0 bg-white dark:bg-dark">
-          <div className="flex items-center gap-1">
-            {!sidebarOpen && (
-              <Button variant="ghost" size="sm" onClick={toggleSidebar}>
-                <PanelLeft className="size-4" />
-              </Button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-1">
-            {!hasApiKey && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => openModal("settings")}
-                className="text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800 text-xs"
-              >
-                ⚠ Add API Key
-              </Button>
-            )}
-
-            <Tooltip content={`Theme: ${theme}`}>
-              <Button variant="ghost" size="sm" onClick={toggleTheme}>
-                <ThemeIcon className="size-4" />
-              </Button>
-            </Tooltip>
-
-            <Tooltip content="Settings (⌘,)">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => openModal("settings")}
-              >
-                <Settings className="size-4" />
-              </Button>
-            </Tooltip>
-          </div>
-        </div>
-
-        {/* Chat — fills remaining space */}
+        {/* Chat — fills full space */}
         <div className="flex-1 min-h-0 overflow-hidden">
           <ChatArea />
         </div>
       </div>
 
-      {/* Modal — rendered at root level so it's above everything */}
+      {/* Modals — rendered at root level so they are above everything */}
       <SettingsModal />
+      <ConfirmModal />
     </div>
   );
 }

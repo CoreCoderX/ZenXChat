@@ -62,7 +62,7 @@ function parseError(text: string): { message: string; providers: string[] } {
   }
 }
 
-// ── SSE stream parser ─────────────────────────────────────────────────────────
+// ── SSE stream parser (Web) ───────────────────────────────────────────────────
 
 async function consumeStream(
   body: ReadableStream<Uint8Array>,
@@ -97,17 +97,11 @@ async function consumeStream(
 
         try {
           const parsed = JSON.parse(payload);
-
-          // In-stream error
           if (parsed?.error) {
-            const msg =
-              typeof parsed.error === "string"
-                ? parsed.error
-                : (parsed.error?.message ?? JSON.stringify(parsed.error));
+            const msg = typeof parsed.error === "string" ? parsed.error : (parsed.error?.message ?? JSON.stringify(parsed.error));
             onError(new Error(msg), []);
             return;
           }
-
           const delta = parsed?.choices?.[0]?.delta?.content;
           if (typeof delta === "string" && delta.length > 0) {
             full += delta;
@@ -120,97 +114,113 @@ async function consumeStream(
     }
     onComplete(full);
   } catch (err) {
+    if ((err as Error).name === "AbortError" || (err as Error).message?.includes("aborted")) {
+      onComplete(full);
+      return;
+    }
     onError(err as Error, []);
   }
 }
 
-// ── Simulate streaming from a full response (for Android fallback) ────────────
+// ── Mobile: XHR Streaming (Bypasses WebView fetch buffering bug) ──────────────
 
-async function simulateStream(
-  content: string,
-  onChunk: (c: string) => void,
-  onComplete: (full: string) => void,
-): Promise<void> {
-  // Split into small chunks to simulate typewriter effect
-  const chunkSize = 4; // characters per chunk
-  let i = 0;
+async function fetchStreamingMobileXHR(opts: StreamOptions): Promise<void> {
+  const { model, messages, apiKey, signal, onChunk, onComplete, onError } = opts;
 
-  while (i < content.length) {
-    const chunk = content.slice(i, i + chunkSize);
-    onChunk(chunk);
-    i += chunkSize;
-    // Yield to browser between chunks
-    await new Promise<void>((r) => setTimeout(r, 8));
-  }
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${BASE_URL}/chat/completions`);
 
-  onComplete(content);
-}
+    // Apply headers
+    const headers = buildHeaders(apiKey);
+    for (const [key, value] of Object.entries(headers)) {
+      xhr.setRequestHeader(key, value);
+    }
 
-// ── Android: non-streaming fetch (avoids SSE issues in WebView) ───────────────
+    let fullText = "";
+    let lastIndex = 0;
+    let buffer = "";
 
-async function fetchAndroid(opts: StreamOptions): Promise<void> {
-  const { model, messages, apiKey, onChunk, onComplete, onError } = opts;
+    // This is the magic: onprogress fires for every chunk, bypassing fetch buffering
+    xhr.onprogress = () => {
+      const newData = xhr.responseText.slice(lastIndex);
+      lastIndex = xhr.responseText.length;
+      buffer += newData;
 
-  console.log("[fetchAndroid] non-streaming fetch for model:", model);
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
 
-  try {
-    const res = await fetch(`${BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: buildHeaders(apiKey),
-      body: JSON.stringify({
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t || t === ":") continue;
+        if (!t.startsWith("data:")) continue;
+
+        const payload = t.replace(/^data:\s*/, "");
+        if (payload === "[DONE]") {
+          onComplete(fullText);
+          resolve();
+          return;
+        }
+
+        try {
+          const parsed = JSON.parse(payload);
+          if (parsed?.error) {
+            const msg = typeof parsed.error === "string" ? parsed.error : (parsed.error?.message ?? JSON.stringify(parsed.error));
+            onError(new Error(msg), []);
+            resolve();
+            return;
+          }
+          const delta = parsed?.choices?.[0]?.delta?.content;
+          if (typeof delta === "string" && delta.length > 0) {
+            fullText += delta;
+            onChunk(delta);
+          }
+        } catch {
+          // Skip malformed chunks
+        }
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onComplete(fullText);
+      } else {
+        const { message, providers } = parseError(xhr.responseText);
+        onError(new Error(message), providers);
+      }
+      resolve();
+    };
+
+    xhr.onerror = () => {
+      onError(new Error("Network error — check your internet connection."), []);
+      resolve();
+    };
+
+    xhr.onabort = () => {
+      onComplete(fullText);
+      resolve();
+    };
+
+    // Handle AbortController
+    if (signal) {
+      signal.addEventListener("abort", () => xhr.abort());
+    }
+
+    xhr.send(
+      JSON.stringify({
         model,
         messages,
-        stream: false, // Non-streaming on Android
-        max_tokens: 4096,
+        stream: true,
         temperature: 0.7,
       }),
-      // No signal on Android — some WebViews abort incorrectly
-    });
-
-    const text = await res.text();
-
-    if (!res.ok) {
-      const { message, providers } = parseError(text);
-      console.error("[fetchAndroid] Error:", res.status, message);
-      onError(new Error(message), providers);
-      return;
-    }
-
-    try {
-      const json = JSON.parse(text);
-      const content = json?.choices?.[0]?.message?.content ?? "";
-
-      if (!content) {
-        onError(new Error("Empty response from model"), []);
-        return;
-      }
-
-      // Simulate streaming so UI shows typewriter effect
-      await simulateStream(content, onChunk, onComplete);
-    } catch {
-      onError(new Error("Failed to parse model response"), []);
-    }
-  } catch (err) {
-    const msg = (err as Error).message ?? "Network error";
-    console.error("[fetchAndroid] Fetch failed:", msg);
-    onError(
-      new Error(
-        msg.includes("Failed to fetch") || msg.includes("NetworkError")
-          ? "Network error — check your internet connection."
-          : msg,
-      ),
-      [],
     );
-  }
+  });
 }
 
-// ── iOS / Web: standard SSE streaming ────────────────────────────────────────
+// ── Web: standard SSE streaming ────────────────────────────────────────────────
 
-async function fetchStreaming(opts: StreamOptions): Promise<void> {
-  const { model, messages, apiKey, signal, onChunk, onComplete, onError } =
-    opts;
-
-  console.log("[fetchStreaming] model:", model);
+async function fetchStreamingWeb(opts: StreamOptions): Promise<void> {
+  const { model, messages, apiKey, signal, onChunk, onComplete, onError } = opts;
 
   try {
     const res = await fetch(`${BASE_URL}/chat/completions`, {
@@ -220,7 +230,6 @@ async function fetchStreaming(opts: StreamOptions): Promise<void> {
         model,
         messages,
         stream: true,
-        max_tokens: 4096,
         temperature: 0.7,
       }),
       signal,
@@ -229,7 +238,6 @@ async function fetchStreaming(opts: StreamOptions): Promise<void> {
     if (!res.ok) {
       const text = await res.text();
       const { message, providers } = parseError(text);
-      console.error("[fetchStreaming] Error:", res.status, message);
       onError(new Error(message), providers);
       return;
     }
@@ -245,9 +253,7 @@ async function fetchStreaming(opts: StreamOptions): Promise<void> {
       onComplete("");
       return;
     }
-    const msg = (err as Error).message ?? "Unknown error";
-    console.error("[fetchStreaming] Error:", msg);
-    onError(new Error(msg), []);
+    onError(new Error((err as Error).message ?? "Unknown error"), []);
   }
 }
 
@@ -257,11 +263,11 @@ export async function streamChatDirect(opts: StreamOptions): Promise<void> {
   const platform = getPlatform();
   console.log("[streamChatDirect] platform:", platform, "model:", opts.model);
 
-  if (platform === "android") {
-    // Android WebView has unreliable SSE — use non-streaming + simulate
-    return fetchAndroid(opts);
+  // MOBILE (Android & iOS): Use XHR to bypass WebView fetch buffering
+  if (platform === "android" || platform === "ios") {
+    return fetchStreamingMobileXHR(opts);
   }
 
-  // iOS and web — use real SSE streaming
-  return fetchStreaming(opts);
+  // WEB: Use standard fetch ReadableStream
+  return fetchStreamingWeb(opts);
 }
