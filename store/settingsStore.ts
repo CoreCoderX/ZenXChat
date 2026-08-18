@@ -15,6 +15,15 @@ const DEFAULT_SETTINGS: AppSettings = {
   sidebarCollapsed: false,
   sendOnEnter: true,
   showTimestamps: false,
+  // ── Generation (advanced) parameters ──
+  temperature: 0.7,
+  topP: 1,
+  topK: 0,
+  maxTokens: 0,
+  presencePenalty: 0,
+  frequencyPenalty: 0,
+  // ── Memory ──
+  memoryMode: "ask",
 };
 
 interface SettingsStore extends AppSettings {
@@ -32,6 +41,14 @@ interface SettingsStore extends AppSettings {
   toggleSendOnEnter: () => void;
   toggleTimestamps: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
+  setTemperature: (value: number) => void;
+  setTopP: (value: number) => void;
+  setTopK: (value: number) => void;
+  setMaxTokens: (value: number) => void;
+  setPresencePenalty: (value: number) => void;
+  setFrequencyPenalty: (value: number) => void;
+  setMemoryMode: (mode: AppSettings["memoryMode"]) => void;
+  resetGenerationParams: () => void;
   resetSettings: () => void;
 }
 
@@ -109,6 +126,22 @@ export const useSettingsStore = create<SettingsStore>()(
       toggleTimestamps: () =>
         set((s) => ({ showTimestamps: !s.showTimestamps })),
       setSidebarCollapsed: (v) => set({ sidebarCollapsed: v }),
+      setTemperature: (value) => set({ temperature: value }),
+      setTopP: (value) => set({ topP: value }),
+      setTopK: (value) => set({ topK: value }),
+      setMaxTokens: (value) => set({ maxTokens: value }),
+      setPresencePenalty: (value) => set({ presencePenalty: value }),
+      setFrequencyPenalty: (value) => set({ frequencyPenalty: value }),
+      setMemoryMode: (mode) => set({ memoryMode: mode }),
+      resetGenerationParams: () =>
+        set({
+          temperature: DEFAULT_SETTINGS.temperature,
+          topP: DEFAULT_SETTINGS.topP,
+          topK: DEFAULT_SETTINGS.topK,
+          maxTokens: DEFAULT_SETTINGS.maxTokens,
+          presencePenalty: DEFAULT_SETTINGS.presencePenalty,
+          frequencyPenalty: DEFAULT_SETTINGS.frequencyPenalty,
+        }),
       resetSettings: () => set({ ...DEFAULT_SETTINGS }),
     }),
     {
@@ -124,6 +157,13 @@ export const useSettingsStore = create<SettingsStore>()(
         sidebarCollapsed: state.sidebarCollapsed,
         sendOnEnter: state.sendOnEnter,
         showTimestamps: state.showTimestamps,
+        temperature: state.temperature,
+        topP: state.topP,
+        topK: state.topK,
+        maxTokens: state.maxTokens,
+        presencePenalty: state.presencePenalty,
+        frequencyPenalty: state.frequencyPenalty,
+        memoryMode: state.memoryMode,
       }),
       // Auto-fix stale/broken model IDs from old sessions
       onRehydrateStorage: () => (state) => {

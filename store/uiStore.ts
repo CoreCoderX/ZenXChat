@@ -20,6 +20,11 @@ interface UIStore {
   splitViewEnabled: boolean;
   toggleSplitView: () => void;
 
+  // Side-by-side model comparison
+  compareMode: boolean;
+  setCompareMode: (mode: boolean) => void;
+  toggleCompareMode: () => void;
+
   previewMode: "split" | "floating";
   setPreviewMode: (mode: "split" | "floating") => void;
 
@@ -60,6 +65,11 @@ export const useUIStore = create<UIStore>((set, get) => ({
   splitViewEnabled: false,
   toggleSplitView: () =>
     set((s) => ({ splitViewEnabled: !s.splitViewEnabled })),
+
+  // ── Compare mode ──────────────────────────────────────────
+  compareMode: false,
+  setCompareMode: (mode) => set({ compareMode: mode }),
+  toggleCompareMode: () => set((s) => ({ compareMode: !s.compareMode })),
 
   previewMode: "split",
   setPreviewMode: (mode) => set({ previewMode: mode }),

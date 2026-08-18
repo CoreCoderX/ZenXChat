@@ -47,6 +47,11 @@ interface ChatStore {
     messageId: string,
     chunk: string,
   ) => void;
+  appendReasoningToMessage: (
+    conversationId: string,
+    messageId: string,
+    chunk: string,
+  ) => void;
 
   // Conversation settings
   setConversationModel: (id: string, model: string) => void;
@@ -267,6 +272,27 @@ export const useChatStore = create<ChatStore>()(
               ...c,
               messages: c.messages.map((m) =>
                 m.id === messageId ? { ...m, content: m.content + chunk } : m,
+              ),
+            };
+          }),
+        }));
+      },
+
+      // Append a chunk to a message's reasoning trace (for streaming)
+      appendReasoningToMessage: (
+        conversationId: string,
+        messageId: string,
+        chunk: string,
+      ) => {
+        set((state) => ({
+          conversations: state.conversations.map((c) => {
+            if (c.id !== conversationId) return c;
+            return {
+              ...c,
+              messages: c.messages.map((m) =>
+                m.id === messageId
+                  ? { ...m, reasoning: (m.reasoning ?? "") + chunk }
+                  : m,
               ),
             };
           }),

@@ -1,6 +1,6 @@
 {
   "name": "ZenXChat",
-  "version": "0.1.0",
+  "version": "1.1.0",
   "private": true,
   "scripts": {
     "analyze": "tsc --noEmit && eslint . --ext .ts,.tsx",

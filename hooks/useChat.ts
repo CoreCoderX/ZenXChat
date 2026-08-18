@@ -5,7 +5,10 @@ import { useChatStore } from "@/store/chatStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useUIStore } from "@/store/uiStore";
 import { streamChatDirect } from "@/lib/openrouter-client";
-import { AttachedFile, ChatMessage } from "@/types";
+import { friendlyErrorMessage } from "@/lib/errors";
+import { buildMemoryContextMessage } from "@/lib/memory";
+import { useMemoryStore } from "@/store/memoryStore";
+import { AttachedFile, ChatMessage, GenerationParams, Message } from "@/types";
 
 export function useChat() {
 const uiStore = useUIStore();
@@ -33,6 +36,12 @@ const result: ChatMessage[] = [];
         "You are a code-focused assistant. Respond with clean, well-commented code in fenced markdown code blocks.",
     });
   }
+
+  // Saved user memories — personalization context
+  const memoryMsg = buildMemoryContextMessage(
+    useMemoryStore.getState().getActiveMemories(),
+  );
+  if (memoryMsg) result.push({ role: "system", content: memoryMsg });
 
   // History
   if (conv) {
@@ -80,7 +89,18 @@ const result: ChatMessage[] = [];
 
 // ── Stream runner ─────────────────────────────────────────────────────────
 
-const runStreamRef = useRef<any>(null);
+type RunStreamFn = (
+  convId: string,
+  assistantMsgId: string,
+  model: string,
+  messages: ChatMessage[],
+  controller: AbortController,
+  keyId: string,
+  keyValue: string,
+  providerOrder?: string[],
+) => Promise<void>;
+
+const runStreamRef = useRef<RunStreamFn | null>(null);
 
   const runStream = useCallback(
     async (
@@ -95,11 +115,26 @@ const runStreamRef = useRef<any>(null);
     ) => {
       // Typewriter buffer state variables
       let textBuffer = "";
+      let reasoningBuffer = "";
+      let reasoningFull = ""; // complete trace, independent of the flush buffer
       let isStreamActive = true;
+      let reasoningStartedAt: number | null = null;
 
       const flushInterval = setInterval(() => {
         if (!isStreamActive) return;
-        if (textBuffer.length === 0) return;
+        if (textBuffer.length === 0 && reasoningBuffer.length === 0) return;
+
+        // Reasoning trace: flush fast (half the buffer per tick) — it's
+        // scaffolding, it should appear promptly without heavy re-renders.
+        if (reasoningBuffer.length > 0) {
+          const take = Math.max(1, Math.ceil(reasoningBuffer.length / 2));
+          const reasoningChunk = reasoningBuffer.slice(0, take);
+          reasoningBuffer = reasoningBuffer.slice(take);
+          if (!reasoningStartedAt) reasoningStartedAt = Date.now();
+          useChatStore
+            .getState()
+            .appendReasoningToMessage(convId, assistantMsgId, reasoningChunk);
+        }
 
         // Consume characters dynamically based on buffer depth to keep up with fast models
         let charsToConsume = 1;
@@ -124,14 +159,31 @@ const runStreamRef = useRef<any>(null);
         isStreamActive = false;
       };
 
+      const settings = useSettingsStore.getState();
+      const generationParams: GenerationParams = {
+        temperature: settings.temperature,
+        topP: settings.topP,
+        topK: settings.topK,
+        maxTokens: settings.maxTokens,
+        presencePenalty: settings.presencePenalty,
+        frequencyPenalty: settings.frequencyPenalty,
+      };
+
       await streamChatDirect({
         model,
         messages,
         apiKey: keyValue,
         signal: controller.signal,
+        generationParams,
 
         onChunk: (chunk) => {
           textBuffer += chunk;
+        },
+
+        onReasoning: (chunk) => {
+          reasoningBuffer += chunk;
+          reasoningFull += chunk;
+          if (!reasoningStartedAt) reasoningStartedAt = Date.now();
         },
 
         onComplete: (fullText) => {
@@ -140,11 +192,20 @@ const runStreamRef = useRef<any>(null);
             useChatStore.getState()
               .getConversation(convId)
               ?.messages.find((m) => m.id === assistantMsgId)?.content ?? "";
-          useChatStore.getState().updateMessage(convId, assistantMsgId, {
+
+          const finalUpdates: Partial<Message> = {
             content: fullText || stored,
             isStreaming: false,
             isError: false,
-          });
+          };
+          if (reasoningFull) {
+            finalUpdates.reasoning = reasoningFull;
+            finalUpdates.reasoningDuration = reasoningStartedAt
+              ? (Date.now() - reasoningStartedAt) / 1000
+              : undefined;
+          }
+
+          useChatStore.getState().updateMessage(convId, assistantMsgId, finalUpdates);
           uiStore.setIsGenerating(false);
           uiStore.setAbortController(null);
           useSettingsStore.getState().updateKeyStatus(keyId, "valid");
@@ -165,7 +226,7 @@ const runStreamRef = useRef<any>(null);
         availableProviders &&
         availableProviders.length > 0
       ) {
-        await runStreamRef.current(
+        await runStreamRef.current?.(
           convId,
           assistantMsgId,
           model,
@@ -183,7 +244,7 @@ const runStreamRef = useRef<any>(null);
       if (fallback && !providerOrder) {
         useSettingsStore.getState().updateKeyStatus(keyId, "invalid");
         useSettingsStore.getState().setActiveKey(fallback.id);
-        await runStreamRef.current(
+        await runStreamRef.current?.(
           convId,
           assistantMsgId,
           model,
@@ -195,11 +256,10 @@ const runStreamRef = useRef<any>(null);
         return;
       }
 
+      const { friendly, detail } = friendlyErrorMessage(err, model);
       useChatStore.getState().updateMessage(convId, assistantMsgId, {
-        content:
-          `❌ **${err.message}**\n\n` +
-          `**Model:** \`${model}\`\n\n` +
-          `Please select a different model or check your API key in **Settings → API Keys**.`,
+        content: friendly,
+        errorDetail: detail,
         isStreaming: false,
         isError: true,
       });
@@ -246,8 +306,8 @@ if (!trimmed && (!attachments || attachments.length === 0)) return;
     return;
   }
 
-  // Add user message
-  useChatStore.getState().addMessage(convId, {
+  // Add user message — return its id so callers can attach memory confirmations
+  const userMsgId = useChatStore.getState().addMessage(convId, {
     role: "user",
     content: trimmed || "Analyze the attached files.",
     attachments,
@@ -275,6 +335,8 @@ if (!trimmed && (!attachments || attachments.length === 0)) return;
     activeKey.id,
     activeKey.key,
   );
+
+  return userMsgId;
 },
 [uiStore, buildMessages, runStream],
 );
@@ -304,6 +366,11 @@ const sysPrompt =
   conv.systemPrompt?.trim() || useSettingsStore.getState().systemPrompt?.trim();
 if (sysPrompt) historyMsgs.push({ role: "system", content: sysPrompt });
 
+const memoryMsg = buildMemoryContextMessage(
+  useMemoryStore.getState().getActiveMemories(),
+);
+if (memoryMsg) historyMsgs.push({ role: "system", content: memoryMsg });
+
 msgs
   .filter(
     (m) =>
@@ -327,6 +394,8 @@ useChatStore.getState().updateMessage(convId, lastAsst.id, {
   content: "",
   isStreaming: true,
   isError: false,
+  reasoning: undefined,
+  reasoningDuration: undefined,
 });
 
 const controller = new AbortController();

@@ -11,6 +11,12 @@ export const MODEL_FILTERS: ModelFilter[] = [
   { category: "image", label: "Image", icon: "Image" },
   { category: "voice", label: "Voice", icon: "Mic" },
   { category: "search", label: "Web Search", icon: "Globe" },
+  // ── Capability tabs (auto-derived from the Models API metadata) ──
+  { category: "reasoning", label: "Reasoning", icon: "Brain" },
+  { category: "tools", label: "Tools", icon: "Wrench" },
+  { category: "structured", label: "Structured", icon: "Braces" },
+  { category: "vision", label: "Vision", icon: "Eye" },
+  { category: "long-context", label: "Long Context", icon: "StretchHorizontal" },
 ];
 
 // Popular models — prioritise providers available on free/low-cost accounts
@@ -107,6 +113,25 @@ export function enrichModel(raw: Record<string, unknown>): OpenRouterModel {
 
   const provider = id.split("/")[0] || "unknown";
   const isPopular = POPULAR_MODEL_IDS.has(id);
+  const context_length = (raw.context_length as number) || 4096;
+
+  // ── Capability flags from the Models API metadata ────────────────────────
+  const supported_parameters = Array.isArray(raw.supported_parameters)
+    ? (raw.supported_parameters as string[])
+    : [];
+  const modality =
+    (raw.architecture as { modality?: string } | undefined)?.modality ?? "";
+
+  const supportsReasoning =
+    supported_parameters.includes("reasoning") ||
+    /(?:^|[\/-])(?:r1|o1|o3|o4|reasoning|thinking)(?:[\/-]|$)/i.test(id);
+  const supportsTools = supported_parameters.includes("tools");
+  const supportsStructuredOutputs =
+    supported_parameters.includes("structured_outputs") ||
+    supported_parameters.includes("json_mode");
+  const supportsVision =
+    modality.toLowerCase().includes("image") || IMAGE_MODEL_IDS.has(id);
+  const isLongContext = context_length >= 200_000;
 
   const categories: ModelCategory[] = ["all"];
   if (isFree) categories.push("free");
@@ -120,19 +145,30 @@ export function enrichModel(raw: Record<string, unknown>): OpenRouterModel {
   if (IMAGE_MODEL_IDS.has(id)) categories.push("image");
   if (VOICE_MODEL_IDS.has(id)) categories.push("voice");
   if (SEARCH_MODEL_IDS.has(id)) categories.push("search");
+  if (supportsReasoning) categories.push("reasoning");
+  if (supportsTools) categories.push("tools");
+  if (supportsStructuredOutputs) categories.push("structured");
+  if (supportsVision) categories.push("vision");
+  if (isLongContext) categories.push("long-context");
 
   return {
     id,
     name: (raw.name as string) || id,
     description: raw.description as string | undefined,
-    context_length: (raw.context_length as number) || 4096,
+    context_length,
     pricing,
     top_provider: raw.top_provider as OpenRouterModel["top_provider"],
     architecture: raw.architecture as OpenRouterModel["architecture"],
+    supported_parameters,
     provider,
     isFree,
     isPopular,
     category: categories,
+    supportsReasoning,
+    supportsTools,
+    supportsStructuredOutputs,
+    supportsVision,
+    isLongContext,
   };
 }
 

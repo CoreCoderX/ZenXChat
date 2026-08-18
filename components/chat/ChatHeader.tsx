@@ -1,6 +1,6 @@
 "use client";
 
-import { Code2, Layout, ChevronDown, PanelLeft, Settings, Sun, Moon, Monitor } from "lucide-react";
+import { Code2, Layout, ChevronDown, PanelLeft, Settings, Sun, Moon, Monitor, GitCompare } from "lucide-react";
 import { useChatStore } from "@/store/chatStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useUIStore } from "@/store/uiStore";
@@ -17,7 +17,15 @@ export default function ChatHeader() {
     (s) => s.setConversationCodeMode
   );
   const { selectedModel, codeMode, toggleCodeMode, apiKeys } = useSettingsStore();
-  const { splitViewEnabled, toggleSplitView, openModal, sidebarOpen, toggleSidebar } = useUIStore();
+  const {
+    splitViewEnabled,
+    toggleSplitView,
+    openModal,
+    sidebarOpen,
+    toggleSidebar,
+    compareMode,
+    toggleCompareMode,
+  } = useUIStore();
   const { theme, toggleTheme } = useTheme();
 
   const model = conversation?.model ?? selectedModel;
@@ -92,6 +100,23 @@ export default function ChatHeader() {
               onChange={handleCodeModeToggle}
             />
           </div>
+        </Tooltip>
+
+        {/* Compare Models Toggle */}
+        <Tooltip content={compareMode ? "Exit compare mode" : "Compare models side by side"}>
+          <Button
+            variant={compareMode ? "default" : "ghost"}
+            size="sm"
+            onClick={toggleCompareMode}
+            className={cn(
+              "rounded-lg p-1.5 text-ink-secondary dark:text-neutral-400 hover:text-ink dark:hover:text-neutral-100",
+              compareMode
+                ? "bg-neutral-200/80 dark:bg-dark-tertiary text-ink dark:text-white"
+                : ""
+            )}
+          >
+            <GitCompare className="size-4" />
+          </Button>
         </Tooltip>
 
         {/* Live Preview Toggle */}

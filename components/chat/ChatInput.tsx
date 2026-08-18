@@ -512,7 +512,7 @@ export default function ChatInput({
                     variant="primary"
                     size="sm"
                     onClick={onStop}
-                    className="rounded-xl p-1.5 bg-neutral-900 hover:bg-neutral-800 dark:bg-neutral-100 dark:hover:bg-neutral-200 text-white dark:text-neutral-900 flex items-center justify-center size-8"
+                    className="rounded-full p-1.5 bg-neutral-900 hover:bg-neutral-800 dark:bg-neutral-100 dark:hover:bg-neutral-200 text-white dark:text-neutral-900 flex items-center justify-center size-8"
                   >
                     <Square className="size-3.5 fill-current" />
                   </Button>
@@ -531,7 +531,7 @@ export default function ChatInput({
                     onClick={handleSend}
                     disabled={!canSend}
                     className={cn(
-                      "rounded-xl p-1.5 transition-all duration-150 flex items-center justify-center size-8",
+                      "rounded-full p-1.5 transition-all duration-150 flex items-center justify-center size-8",
                       canSend
                         ? "bg-neutral-950 hover:bg-neutral-900 text-white dark:bg-neutral-50 dark:hover:bg-white dark:text-neutral-900 shadow-md active:scale-95 cursor-pointer"
                         : "bg-neutral-100 text-neutral-300 dark:bg-dark-tertiary dark:text-neutral-600 cursor-not-allowed"

@@ -16,6 +16,11 @@ import {
   Globe,
   RefreshCw,
   Check,
+  Brain,
+  Wrench,
+  Braces,
+  Eye,
+  StretchHorizontal,
 } from "lucide-react";
 import { useModels } from "@/hooks/useModels";
 import { useChatStore } from "@/store/chatStore";
@@ -45,6 +50,11 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Image,
   Mic,
   Globe,
+  Brain,
+  Wrench,
+  Braces,
+  Eye,
+  StretchHorizontal,
 };
 
 interface ModelSelectorProps {

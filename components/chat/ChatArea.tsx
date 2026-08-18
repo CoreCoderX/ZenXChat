@@ -5,10 +5,15 @@ import { useChatStore } from "@/store/chatStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useUIStore } from "@/store/uiStore";
 import { useChat } from "@/hooks/useChat";
+import { useCompare } from "@/hooks/useCompare";
+import { useCompareStore } from "@/store/compareStore";
+import { useMemoryStore } from "@/store/memoryStore";
+import { detectMemoryCandidates } from "@/lib/memory";
 import { AttachedFile } from "@/types";
 import ChatHeader from "./ChatHeader";
 import MessageList from "./MessageList";
 import ChatInput from "./ChatInput";
+import CompareView from "@/components/compare/CompareView";
 import SplitView from "@/components/preview/SplitView";
 import { cn } from "@/lib/utils";
 import { motion, useDragControls } from "framer-motion";
@@ -35,11 +40,18 @@ export default function ChatArea() {
   }, []);
 
   const { sendMessage, isGenerating, stopGeneration, editMessage } = useChat();
+  const { runCompare, stopCompare, useResult } = useCompare();
   const conversation = useChatStore((s) => s.getActiveConversation());
   const activeConvId = useChatStore((s) => s.activeConversationId);
   const selectedModel = useSettingsStore((s) => s.selectedModel);
   const createConversation = useChatStore((s) => s.createConversation);
-  const { splitViewEnabled, previewMode, setPreviewMode } = useUIStore();
+  const memoryMode = useSettingsStore((s) => s.memoryMode);
+  const addMemory = useMemoryStore((s) => s.addMemory);
+  const setPendingCandidates = useMemoryStore((s) => s.setPendingCandidates);
+  const setLastSavedNote = useMemoryStore((s) => s.setLastSavedNote);
+  const compareRunning = useCompareStore((s) => s.session?.isRunning ?? false);
+  const { splitViewEnabled, previewMode, setPreviewMode, compareMode } =
+    useUIStore();
 
   useEffect(() => {
     const handleResize = () => {
@@ -54,27 +66,59 @@ export default function ChatArea() {
 
   const messages = conversation?.messages ?? [];
 
+  // Prompt-driven memory: detect personal details / save keywords after each
+  // user message, then either ask for confirmation or save per the setting.
+  const handleMemoryDetection = useCallback(
+    (text: string, messageId?: string) => {
+      if (memoryMode === "off" || !messageId) return;
+      const candidates = detectMemoryCandidates(text);
+      if (candidates.length === 0) return;
+
+      if (memoryMode === "ask") {
+        setPendingCandidates({ messageId, candidates });
+      } else {
+        // auto — the user opted into silent saving
+        let saved = 0;
+        for (const c of candidates) {
+          if (addMemory(c).ok) saved++;
+        }
+        setLastSavedNote({ messageId, count: saved });
+      }
+    },
+    [memoryMode, addMemory, setPendingCandidates, setLastSavedNote],
+  );
+
   const handleSend = useCallback(
     async (content: string, attachments?: AttachedFile[], webSearch?: boolean) => {
       const trimmed = content.trim();
       if (!trimmed && (!attachments || attachments.length === 0)) return;
-      if (isGenerating) return;
+      if (isGenerating || compareRunning) return;
+
+      if (compareMode) {
+        await runCompare(trimmed || "Please analyze the attached files.");
+        return;
+      }
 
       let convId = activeConvId;
       if (!convId) convId = createConversation(selectedModel);
 
-      await sendMessage(
+      const userMsgId = await sendMessage(
         trimmed || "Please analyze the attached files.",
         convId,
         attachments,
       );
+      handleMemoryDetection(trimmed, userMsgId ?? undefined);
     },
     [
       isGenerating,
+      compareRunning,
+      compareMode,
+      runCompare,
       activeConvId,
       selectedModel,
       createConversation,
       sendMessage,
+      handleMemoryDetection,
     ],
   );
 
@@ -121,16 +165,27 @@ export default function ChatArea() {
           {/* Floating Model Header */}
           <ChatHeader />
 
-          {/* Messages — grows to fill space, centered with max-width on desktop */}
+          {/* Messages / Compare arena — grows to fill space */}
           <div
             style={{
               flex: 1,
               minHeight: 0,
               position: "relative",
               overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
             }}
           >
-            <MessageList messages={messages} isGenerating={isGenerating} onEdit={editMessage} bottomPadding={inputHeight} />
+            {compareMode ? (
+              <CompareView onUse={useResult} />
+            ) : (
+              <MessageList
+                messages={messages}
+                isGenerating={isGenerating}
+                onEdit={editMessage}
+                bottomPadding={inputHeight}
+              />
+            )}
           </div>
 
           {/* Floating Input Container — centered */}
@@ -138,8 +193,11 @@ export default function ChatArea() {
             <div ref={inputContainerRef} className="w-full md:max-w-3xl pointer-events-auto">
               <ChatInput
                 onSend={handleSend}
-                isGenerating={isGenerating}
-                onStop={stopGeneration}
+                isGenerating={compareMode ? compareRunning : isGenerating}
+                onStop={compareMode ? stopCompare : stopGeneration}
+                placeholder={
+                  compareMode ? "Compare both models…" : undefined
+                }
               />
             </div>
           </div>

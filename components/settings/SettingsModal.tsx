@@ -1,21 +1,31 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Key, Cpu, Sliders, Info, X } from "lucide-react";
+import { Key, Cpu, Sliders, Info, X, Gauge, MemoryStick } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useUIStore } from "@/store/uiStore";
 import ApiKeyManager from "./ApiKeyManager";
 import ModelSelector from "./ModelSelector";
 import GeneralSettings from "./GeneralSettings";
+import AdvancedSettings from "./AdvancedSettings";
+import MemorySettings from "./MemorySettings";
 import Button from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 
-type SettingsTab = "models" | "api-keys" | "general" | "about";
+type SettingsTab =
+  | "models"
+  | "api-keys"
+  | "general"
+  | "advanced"
+  | "memory"
+  | "about";
 
 const TABS: { id: SettingsTab; label: string; icon: React.ElementType }[] = [
   { id: "models", label: "Models", icon: Cpu },
   { id: "api-keys", label: "API Keys", icon: Key },
   { id: "general", label: "General", icon: Sliders },
+  { id: "advanced", label: "Advanced", icon: Gauge },
+  { id: "memory", label: "Memory", icon: MemoryStick },
   { id: "about", label: "About", icon: Info },
 ];
 
@@ -128,6 +138,16 @@ export default function SettingsModal() {
                   <GeneralSettings />
                 </div>
               )}
+              {activeTab === "advanced" && (
+                <div className="p-4">
+                  <AdvancedSettings />
+                </div>
+              )}
+              {activeTab === "memory" && (
+                <div className="p-4">
+                  <MemorySettings />
+                </div>
+              )}
               {activeTab === "about" && (
                 <div className="p-4">
                   <AboutSection />
@@ -145,15 +165,20 @@ function AboutSection() {
   return (
     <div className="space-y-5 max-w-lg">
       <div className="flex items-center gap-3">
-        <div className="size-10 rounded-xl bg-neutral-100 dark:bg-dark-tertiary flex items-center justify-center">
-          <div className="size-4 rounded-full bg-neutral-500 dark:bg-neutral-400" />
+        <div className="size-10 rounded-xl overflow-hidden bg-neutral-100 dark:bg-dark-tertiary flex items-center justify-center shrink-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/icon.png"
+            alt="App icon"
+            className="size-full object-cover"
+          />
         </div>
         <div>
           <h3 className="text-sm font-semibold text-ink dark:text-neutral-100">
             OpenRouter Chat
           </h3>
           <p className="text-xs text-ink-tertiary dark:text-neutral-500">
-            Version 1.0.0
+            Version 1.1.0
           </p>
         </div>
       </div>

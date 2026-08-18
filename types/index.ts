@@ -14,7 +14,10 @@ export interface Message {
   model?: string; // Which model generated this response
   isStreaming?: boolean; // Currently being streamed
   isError?: boolean; // Error state
+  reasoning?: string; // Model's reasoning / thinking trace (delta.reasoning)
+  reasoningDuration?: number; // Seconds spent producing the reasoning trace
   tokenCount?: number; // Optional token usage
+  errorDetail?: string; // Full raw error info behind the "!" in the error bubble
   attachments?: AttachedFile[];
   searchResults?: WebSearchResult[];
 }
@@ -66,11 +69,19 @@ export interface OpenRouterModel {
     tokenizer: string;
     instruct_type?: string;
   };
+  /** Params the model officially supports, e.g. ["temperature","top_p","tools","reasoning",...] */
+  supported_parameters?: string[];
   // Derived / enriched fields
   provider: string; // "anthropic", "openai", etc.
   isFree: boolean;
   isPopular: boolean;
   category: ModelCategory[];
+  // Capability flags derived from the Models API metadata
+  supportsReasoning: boolean;
+  supportsTools: boolean;
+  supportsStructuredOutputs: boolean;
+  supportsVision: boolean;
+  isLongContext: boolean;
 }
 
 // --- Model Category / Filter Types ---
@@ -85,7 +96,13 @@ export type ModelCategory =
   | "code"
   | "image"
   | "voice"
-  | "search";
+  | "search"
+  // Capability tabs derived from the Models API metadata
+  | "reasoning"
+  | "tools"
+  | "structured"
+  | "vision"
+  | "long-context";
 
 export interface ModelFilter {
   category: ModelCategory;
@@ -107,7 +124,30 @@ export interface ApiKey {
 
 // --- Settings Types ---
 
-export interface AppSettings {
+// ── Generation (advanced) parameters ────────────────────────────────────────
+
+export interface GenerationParams {
+  temperature: number; // 0–2
+  topP: number; // 0–1 (1 = no top-p sampling)
+  topK: number; // 0 = off (only sent when > 0)
+  maxTokens: number; // 0 = auto (not sent; free models still capped)
+  presencePenalty: number; // -2–2 (0 = off)
+  frequencyPenalty: number; // -2–2 (0 = off)
+}
+
+// ── Memory types ─────────────────────────────────────────────────────────────
+
+export type MemoryMode = "off" | "ask" | "auto";
+
+export interface Memory {
+  id: string;
+  text: string;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AppSettings extends GenerationParams {
   apiKeys: ApiKey[];
   activeKeyId: string | null;
   selectedModel: string;
@@ -118,6 +158,7 @@ export interface AppSettings {
   sidebarCollapsed: boolean;
   sendOnEnter: boolean;
   showTimestamps: boolean;
+  memoryMode: MemoryMode;
 }
 
 // --- Chat Request Types ---
@@ -133,6 +174,45 @@ export interface ChatRequest {
   stream: boolean;
   max_tokens?: number;
   temperature?: number;
+  generationParams?: GenerationParams;
+}
+
+// ── Side-by-side model comparison ────────────────────────────────────────────
+
+export type CompareSide = "a" | "b";
+
+export interface CompareResult {
+  model: string;
+  content: string;
+  reasoning: string;
+  reasoningDuration?: number;
+  isStreaming: boolean;
+  isError: boolean;
+  errorDetail?: string;
+  startedAt: number | null;
+  finishedAt: number | null;
+}
+
+export interface CompareSession {
+  id: string;
+  prompt: string;
+  modelA: string;
+  modelB: string;
+  results: { a: CompareResult; b: CompareResult };
+  startedAt: number | null;
+  isRunning: boolean;
+  /** Set once the session has been archived to history (prevents dupes). */
+  archived?: boolean;
+}
+
+export interface CompareHistoryEntry {
+  id: string;
+  prompt: string;
+  modelA: string;
+  modelB: string;
+  results: { a: CompareResult; b: CompareResult };
+  startedAt: number;
+  finishedAt: number;
 }
 
 export interface ChatStreamChunk {

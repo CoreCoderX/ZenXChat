@@ -21,12 +21,34 @@
 - **Markdown rendering** — Full GitHub Flavored Markdown (GFM) with tables, blockquotes, lists, and inline code
 - **Syntax-highlighted code blocks** — Powered by [Shiki](https://shiki.matsu.io) with GitHub Dark/Light themes
 - **Code preview panel** — Live preview HTML, CSS, and JavaScript code in a sandboxed iframe (split or floating view)
-- **Message editing & resend** — Edit any previous message and re-submit, even without modifications
+- **Message editing & resend** — Polished in-place editor card (auto-growing textarea, Enter to send, Esc to cancel); re-submit even without modifications
 - **Message regeneration** — Regenerate the last assistant response with a single tap
 - **Stop generation** — Cancel an in-progress response instantly at any point
 - **File attachments** — Attach images, documents, code files, PDFs, and CSVs (up to 10 MB per file)
 - **Web search toggle** — Ask questions with real-time web context
-- **Thinking mode** — Enable extended reasoning for supported models
+- **Friendly in-chat errors** — Rate limits, missing credits, invalid keys, and provider hiccups become readable messages, with a "!" to reveal the full raw error
+
+### AI Loader & Reasoning
+- **Thinking loader** — `dots` / `bar` / `grid` loaders share one animation beat and show a live elapsed timer while waiting for the first token
+- **Live reasoning traces** — The model's thinking (`delta.reasoning`) streams in real time, then collapses to "Thought for 4.2s" once the answer lands
+- **Reduced-motion aware** — Loaders and reasoning panels hold static, legible states under `prefers-reduced-motion`
+
+### Side-by-Side Model Comparison
+- **Compare two models at once** — Send one prompt and watch two models generate simultaneously, each with its own live streaming, reasoning trace, and elapsed timer
+- **Compare history** — Past comparisons archive automatically into a history popover (reopen, delete, or clear all); model pickers persist between sessions
+- **New comparison** — One tap starts fresh, aborting any in-flight generation
+- **Adopt an answer** — "Use this response" drops the winning answer into your active conversation with its model tagged
+- **Fully responsive** — Cards sit side-by-side on tablet and desktop, stack on mobile, and the arena scrolls as one surface so touch works everywhere
+
+### Memory & Personalization
+- **Prompt-driven detection** — Personal details ("I prefer…", "my name is…", "I work at…") and explicit keywords ("remember that…", "save this…") are detected automatically
+- **You stay in control** — Ask-before-saving confirmation card ("Remember this?"), fully automatic mode with a saved-fact notice, or memory fully off
+- **Bounded, not unlimited** — Capped at 50 memories / 500 chars each / 10k total, with LRU eviction and a live usage meter
+- **Full memory management** — Edit, delete, or disable any memory; enabled memories are injected into every request as personalization context
+
+### Advanced Generation Controls
+- **Developer parameters** — Temperature, Top P, Top K, max tokens, and presence & frequency penalties, applied to every chat and compare request (only non-default values are sent)
+- **AI system-prompt polish** — Rewrite your global system prompt with a free model, preview the result, and apply or discard
 
 ### Conversation Management
 - **Persistent chat history** — All conversations saved locally via `@capacitor/preferences`
@@ -107,11 +129,15 @@ ZenXChat/
 │   └── page.tsx              # Main page entry
 ├── components/
 │   ├── chat/
-│   │   ├── ChatArea.tsx      # Main chat column, FAB, split layout
-│   │   ├── ChatHeader.tsx    # Floating model selector header
+│   │   ├── ChatArea.tsx      # Main chat column, compare mode, split layout
+│   │   ├── ChatHeader.tsx    # Floating header: model selector, compare toggle
 │   │   ├── ChatInput.tsx     # Message composer (local state, no parent re-renders)
-│   │   ├── MessageBubble.tsx # Individual message with edit/regenerate actions
+│   │   ├── MessageBubble.tsx # Message with edit card, memory confirm, error "!"
 │   │   └── MessageList.tsx   # Scrollable message container with smart auto-scroll
+│   ├── compare/
+│   │   ├── CompareView.tsx   # Compare arena: model pickers, history, result cards
+│   │   ├── CompareCard.tsx   # Per-model result card (loader, reasoning, actions)
+│   │   └── ModelPicker.tsx   # Compact searchable model dropdown
 │   ├── layout/
 │   │   ├── AppShell.tsx      # Root app layout (sidebar + chat area)
 │   │   ├── Sidebar.tsx       # Conversation list, search, actions
@@ -122,22 +148,36 @@ ZenXChat/
 │   ├── preview/
 │   │   └── SplitView.tsx    # Sandboxed iframe code preview
 │   ├── settings/
-│   │   └── ApiKeyManager.tsx # Key CRUD, validation, fallback management
+│   │   ├── SettingsModal.tsx    # Tabbed settings (Models, Keys, General, Advanced, Memory)
+│   │   ├── ModelSelector.tsx    # Search + capability category tabs
+│   │   ├── ApiKeyManager.tsx    # Key CRUD, validation, fallback management
+│   │   ├── GeneralSettings.tsx  # Appearance, system prompt + AI polish
+│   │   ├── AdvancedSettings.tsx # Generation parameters (temperature, top_k, …)
+│   │   └── MemorySettings.tsx   # Memory mode, list, usage meter
+│   ├── smoothui/
+│   │   ├── AILoader.tsx      # Thinking loader: dots / bar / grid + elapsed timer
+│   │   └── AIReasoning.tsx   # Collapsible live reasoning trace
 │   └── ui/
 │       ├── Button.tsx
 │       ├── Modal.tsx
 │       └── Tooltip.tsx
 ├── hooks/
 │   ├── useChat.ts            # Core streaming pipeline with typewriter buffer
+│   ├── useCompare.ts         # Parallel two-model comparison streaming
 │   └── useModels.ts          # Cached OpenRouter model list fetch
 ├── lib/
-│   ├── openrouter-client.ts  # SSE streaming (Web: fetch ReadableStream, Mobile: XHR)
-│   ├── models.ts             # Model metadata, filtering, caching
+│   ├── openrouter-client.ts  # SSE streaming (Web: fetch, Mobile: XHR) + generation params
+│   ├── models.ts             # Model metadata, capability flags, caching
+│   ├── memory.ts             # Memory detection heuristics + injection
+│   ├── errors.ts             # Friendly error mapping
+│   ├── polish.ts             # AI system-prompt polishing
 │   └── utils.ts              # Utility helpers
 ├── store/
-│   ├── chatStore.ts          # Conversations, messages, CRUD actions (Zustand + persistence)
-│   ├── settingsStore.ts      # API keys, model selection, theme
-│   └── uiStore.ts            # Generating state, abort controller, modal state
+│   ├── chatStore.ts          # Conversations, messages, CRUD actions (persisted)
+│   ├── compareStore.ts       # Compare sessions + history (persisted)
+│   ├── memoryStore.ts        # Memories + caps (persisted)
+│   ├── settingsStore.ts      # API keys, model, theme, generation params, memory mode
+│   └── uiStore.ts            # Generating state, abort controller, modal, compare mode
 ├── android/                  # Capacitor Android project
 ├── capacitor.config.ts       # Capacitor build configuration
 ├── tailwind.config.ts        # Tailwind design tokens
@@ -185,6 +225,23 @@ npx cap open android
 
 > In Android Studio: **Build → Generate Signed Bundle / APK → APK** to produce a release APK.
 
+### Bumping the Version for a Release
+
+Before building a release, update the version in **all** of these places (they must stay in sync):
+
+| File | What to change | Example (v1.1.0 → v1.2.0) |
+|---|---|---|
+| `package.json` | `"version"` field | `"version": "1.2.0"` |
+| `package-lock.json` | `"version"` in the root `""` entry (top of the file, and the `packages` → `""` block) — **not** dependency versions | `"version": "1.2.0"` |
+| `android/app/build.gradle` | `versionName` and `versionCode` | `versionName "1.2.0"`, `versionCode 3` (always **increment** `versionCode`, it must never decrease) |
+| `components/settings/SettingsModal.tsx` | The About section's displayed version | `Version 1.2.0` |
+
+**One-time checks per release:**
+
+1. `npm install` (or `npm install --package-lock-only`) to keep the lockfile's root version in sync if you changed it by hand.
+2. Verify the About screen (Settings → About) and the Android launcher show the new version: `npx cap open android` → run on device, or check `versionName` under **Build → Generate Signed Bundle / APK**.
+3. `versionCode` increments by 1 for each release — Android rejects installs with a lower or equal `versionCode` than what's already installed.
+
 ### Running on Device (Debug)
 
 ```bash
@@ -213,6 +270,7 @@ To get started:
 | `Enter` | Send message (desktop) |
 | `Shift + Enter` | Insert newline (desktop) |
 | `Enter` on mobile | Insert newline |
+| `Esc` | Cancel editing / close dialogs / stop generation |
 
 ---
 
@@ -231,35 +289,30 @@ A complete log of issues resolved and improvements made:
 ### Streaming & Performance
 - **Enabled SSE streaming on Android** — Replaced non-streaming (full-response buffered) fetch with real SSE streaming via `XMLHttpRequest.onprogress`, eliminating the "model takes minutes to respond" issue on mobile
 - **Disabled `CapacitorHttp` plugin** — `CapacitorHttp` was intercepting and buffering `fetch` requests, preventing SSE from streaming in real-time; disabling it restores native WebView `fetch` behavior
-- **Removed `max_tokens: 4096` cap** — Removed the hardcoded token limit that was causing responses to cut off mid-sentence; models now generate up to their native output limit
+- **Smart `max_tokens` handling** — Paid models generate up to their native output limit (no hardcoded cap); `:free` models send an explicit 4096-token cap to avoid the 402 "requires more credits, or fewer max_tokens" error
 - **Typewriter buffer queue** — Streaming tokens are buffered locally and flushed at 60fps with dynamic character consumption, producing smooth word-by-word text animation instead of choppy paragraph-at-a-time updates
 - **AbortError handled cleanly** — Aborting a stream (Stop button) now calls `onComplete` with the partial text instead of triggering `onError`, eliminating false error messages on stop
 - **`stopGeneration` cleanup** — Removed circular `require()` hack; abort chain now cleanly propagates: `abort()` → `AbortError` in reader → `onComplete(partial)`
-
-### Scroll & Touch (Mobile)
-- **Auto-scroll race condition fixed** — `userScrolledUpRef` check moved **inside** the `setTimeout` callback so wheel/touch events have the full 50ms window to set the pause flag before any scroll executes
-- **Stale timer cleanup** — Each new streaming chunk cancels its predecessor's pending scroll `setTimeout` via `clearTimeout` in the effect cleanup, preventing scroll queue accumulation
-- **`touchmove` replaces `touchstart`** — Detecting scroll intent on `touchmove` (swipe in progress) is far more reliable than `touchstart` (finger down); the pause flag is now set the instant the user swipes, not before
-- **Code block `pointer-events: none` during streaming** — Rapid Shiki DOM mutations inside code blocks were consuming mobile touch events; disabling pointer events on the code container during streaming passes all gestures to the outer scroll container
-- **Shiki skipped during streaming** — Code blocks fall back to `textContent` updates while generating and run Shiki exactly once on completion, eliminating the main-thread CPU spike that froze touch inputs
-- **Desktop `wheel` event** — Added `wheel` listener (in addition to `touchmove`) to detect desktop mouse scroll intent and pause auto-scroll correctly
-- **`overscrollBehavior: contain` removed** — This CSS property was blocking touch propagation on some Android WebViews
-- **`willChange: scroll-position`** — Added compositing hint to message scroll container for GPU-accelerated smooth scrolling
-
-### Input & Editing
-- **Input lag eliminated** — Moved textarea value state from `ChatArea` (global) to `ChatInput` (local), so typing no longer re-renders the entire page on every keystroke
-- **Message edit & resend without changes** — Removed the guard that blocked submitting an unmodified message; renamed button to "Send" for clarity
-- **Mobile Enter key** — `handleKeyDown` detects mobile devices by user-agent and screen width, allowing `Enter` to insert a newline on virtual keyboards instead of submitting
-- **Edit pencil icon repositioned** — Edit action button moved below the message bubble rather than floating to the left
 
 ### UI & Design
 - **Conversation list sorted by `updatedAt`** — Most recently active chats now appear at the top of the sidebar
 - **Dedicated confirmation dialogs** — Delete and Clear All actions use a custom modal dialog instead of the browser `confirm()` prompt
 - **Sidebar active chat indicator** — Removed the green left-border style on selected conversations for a cleaner look
-- **Mobile FAB for new chat** — Floating `+` button positioned top-right on mobile for one-tap new conversation creation, hidden on desktop
 - **FAB theme-aware colors** — FAB background and icon correctly follow light/dark theme (white card in light, dark card in dark mode)
 - **Full-screen mobile chat** — Chat area covers the full viewport width on mobile; side gaps are desktop-only
 - **Clean UI layout** — Replaced floating element stack with a structured, card-based layout with consistent spacing
+
+### Feature Enhancements
+
+- **AI loader & reasoning UI** — Added the SmoothUI `AILoader` (dots/bar/grid variants with a shared beat and live elapsed timer) and `AIReasoning` (live trace that collapses to "Thought for Xs" with a beat); reasoning was previously never surfaced in the UI
+- **Reasoning capture on all platforms** — `delta.reasoning` (plus `reasoning_content` / `reasoning_summary` fallbacks) is parsed in both the web fetch and mobile XHR stream paths, buffered and flushed during streaming, with the measured duration saved on completion
+- **Friendly in-chat errors** — New `lib/errors.ts` maps 401 / 402 / 429 / 404, context-window, provider, and network failures to readable markdown messages; the full raw detail (status, model, error) is one tap behind a "!" in the error bubble
+- **Side-by-side model comparison** — Two models stream the same prompt in parallel (`hooks/useCompare.ts` + `store/compareStore.ts`), each card with its own loader, reasoning, timer, and error handling; auto-archived history (reopen / delete / clear), one-tap new comparison, and "Use this response" to adopt an answer
+- **Memory system** — `lib/memory.ts` prompt-driven detection, `store/memoryStore.ts` with hard caps (50 memories / 500 chars each / 10k total) and LRU eviction, ask / auto / off modes, an inline "Remember this?" confirmation card, and a management tab (edit / delete / disable)
+- **Advanced generation parameters** — Temperature, top_p, top_k, max_tokens, and presence & frequency penalties wired through the request body (only non-default values are sent; free models capped at 4096)
+- **AI system-prompt polishing** — `lib/polish.ts` rewrites the global system prompt with free models (candidate fallback on rate limits), with preview + Apply / Discard
+- **Enhanced model categories** — `enrichModel` reads `supported_parameters`, architecture modality, and `context_length` from the Models API to auto-tag models with Reasoning, Tools, Structured, Vision, and Long Context tabs
+- **Polished edit box** — Message editing upgraded from a bare textarea to a composer-style card with an auto-growing textarea and Enter / Esc keyboard shortcuts
 
 ---
 

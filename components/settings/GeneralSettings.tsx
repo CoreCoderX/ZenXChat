@@ -1,8 +1,14 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+import { Sparkles, Check, X } from "lucide-react";
 import { useSettingsStore } from "@/store/settingsStore";
+import { polishSystemPrompt } from "@/lib/polish";
 import Toggle from "@/components/ui/Toggle";
+import Button from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
+
+const MAX_PROMPT_CHARS = 10000;
 
 export default function GeneralSettings() {
   const {
@@ -16,7 +22,48 @@ export default function GeneralSettings() {
     toggleSendOnEnter,
     showTimestamps,
     toggleTimestamps,
+    getActiveApiKey,
   } = useSettingsStore();
+
+  // ── AI prompt polishing ──────────────────────────────────────────────────
+  const [polishing, setPolishing] = useState(false);
+  const [polishResult, setPolishResult] = useState<string | null>(null);
+  const [polishError, setPolishError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Abort any in-flight polish when the settings panel unmounts
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
+
+  const handlePolish = async () => {
+    if (!systemPrompt.trim() || polishing) return;
+    setPolishing(true);
+    setPolishError(null);
+    setPolishResult(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      const apiKey = getActiveApiKey();
+      if (!apiKey) {
+        setPolishError("Add an API key in Settings → API Keys first.");
+        return;
+      }
+      const result = await polishSystemPrompt(
+        systemPrompt,
+        apiKey,
+        controller.signal,
+      );
+      setPolishResult(result);
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        setPolishError((err as Error).message ?? "Polishing failed.");
+      }
+    } finally {
+      setPolishing(false);
+      abortRef.current = null;
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -66,6 +113,77 @@ export default function GeneralSettings() {
             "transition-colors",
           )}
         />
+
+        {/* Character counter + tip */}
+        <div className="mt-1.5 flex items-center justify-between gap-2">
+          <p className="text-[11px] text-ink-muted dark:text-neutral-600">
+            Tip: keep it under 250 words for best results.
+          </p>
+          <span
+            className={cn(
+              "text-[11px] font-medium tabular-nums select-none",
+              systemPrompt.length > MAX_PROMPT_CHARS
+                ? "text-red-500"
+                : "text-ink-muted dark:text-neutral-600",
+            )}
+          >
+            {systemPrompt.length}/{MAX_PROMPT_CHARS}
+          </span>
+        </div>
+
+        {/* AI polish — improve the prompt with a free model */}
+        <div className="mt-2 flex items-center justify-end">
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={handlePolish}
+            disabled={polishing || !systemPrompt.trim()}
+            isLoading={polishing}
+            className="flex-shrink-0"
+          >
+            {!polishing && <Sparkles className="size-3" />}
+            Polish with AI
+          </Button>
+        </div>
+
+        {polishResult && (
+          <div className="mt-2 rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/60 dark:bg-emerald-950/20 p-3">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Sparkles className="size-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+              <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                Polished version
+              </span>
+            </div>
+            <p className="text-xs text-ink dark:text-neutral-200 whitespace-pre-wrap selectable mb-2">
+              {polishResult}
+            </p>
+            <div className="flex gap-1.5">
+              <Button
+                variant="primary"
+                size="xs"
+                onClick={() => {
+                  setSystemPrompt(polishResult);
+                  setPolishResult(null);
+                }}
+              >
+                <Check className="size-3" />
+                Apply
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => setPolishResult(null)}
+              >
+                <X className="size-3" />
+                Discard
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {polishError && (
+          <p className="mt-2 text-[11px] text-red-500">{polishError}</p>
+        )}
       </section>
 
       {/* ── Chat Behavior ───────────────────────────────────── */}

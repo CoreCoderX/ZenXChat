@@ -1,4 +1,4 @@
-import { ChatMessage } from "@/types";
+import { ChatMessage, GenerationParams } from "@/types";
 
 const BASE_URL = "https://openrouter.ai/api/v1";
 
@@ -43,9 +43,98 @@ export interface StreamOptions {
   messages: ChatMessage[];
   apiKey: string;
   signal?: AbortSignal;
+  generationParams?: GenerationParams;
   onChunk: (chunk: string) => void;
+  onReasoning?: (chunk: string) => void;
   onComplete: (full: string) => void;
   onError: (err: Error, availableProviders?: string[]) => void;
+}
+
+// ── Request body ──────────────────────────────────────────────────────────────
+
+// Free models cap output server-side anyway. Sending an explicit modest
+// max_tokens avoids the 402 "requires more credits, or fewer max_tokens" error
+// when an account's balance can't cover the model's default output limit.
+const MAX_FREE_MODEL_OUTPUT_TOKENS = 4096;
+
+function isFreeModel(model: string): boolean {
+  return model.endsWith(":free");
+}
+
+function buildRequestBody(
+  model: string,
+  messages: ChatMessage[],
+  generationParams?: GenerationParams,
+): string {
+  const p = generationParams;
+  const body: Record<string, unknown> = {
+    model,
+    messages,
+    stream: true,
+  };
+
+  // Temperature is always sent (default 0.7)
+  body.temperature =
+    p && typeof p.temperature === "number" ? p.temperature : 0.7;
+
+  // Top-p: send whenever the user has set it (1 = no top-p sampling)
+  if (p && typeof p.topP === "number") body.top_p = p.topP;
+
+  // Top-k: only sent when enabled (> 0) — some providers ignore it
+  if (p && p.topK > 0) body.top_k = p.topK;
+
+  // Penalties: only sent when non-zero
+  if (p && p.presencePenalty !== 0) body.presence_penalty = p.presencePenalty;
+  if (p && p.frequencyPenalty !== 0)
+    body.frequency_penalty = p.frequencyPenalty;
+
+  // max_tokens: the user's value wins; free models are still capped to avoid
+  // the 402 "requires more credits, or fewer max_tokens" error.
+  if (isFreeModel(model)) {
+    body.max_tokens =
+      p && p.maxTokens > 0
+        ? Math.min(p.maxTokens, MAX_FREE_MODEL_OUTPUT_TOKENS)
+        : MAX_FREE_MODEL_OUTPUT_TOKENS;
+  } else if (p && p.maxTokens > 0) {
+    body.max_tokens = p.maxTokens;
+  }
+
+  return JSON.stringify(body);
+}
+
+// ── Reasoning / usage extraction helpers ─────────────────────────────────────
+
+// OpenRouter forwards provider reasoning in delta.reasoning (DeepSeek R1 etc.);
+// some providers use reasoning_content or reasoning_summary instead.
+function extractReasoningDelta(delta: Record<string, unknown> | undefined): string {
+  if (!delta) return "";
+  for (const key of ["reasoning", "reasoning_content", "reasoning_summary"]) {
+    const v = delta[key];
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  return "";
+}
+
+// ── Error helpers ────────────────────────────────────────────────────────────
+
+// Attach the HTTP status to an error so the UI can classify it (402, 429, ...).
+function withStatus(err: Error, status?: number): Error {
+  if (status !== undefined) {
+    (err as Error & { status?: number }).status = status;
+  }
+  return err;
+}
+
+// Extract error message + optional numeric code from an OpenRouter error object.
+function parseErrorObject(
+  error: unknown,
+): { message: string; code?: number } {
+  if (typeof error === "string") return { message: error };
+  const obj = error as Record<string, unknown> | null;
+  if (!obj) return { message: "Unknown error" };
+  const message = String(obj.message ?? JSON.stringify(error));
+  const code = typeof obj.code === "number" ? obj.code : undefined;
+  return { message, code };
 }
 
 // ── Parse error from OpenRouter response body ─────────────────────────────────
@@ -66,10 +155,9 @@ function parseError(text: string): { message: string; providers: string[] } {
 
 async function consumeStream(
   body: ReadableStream<Uint8Array>,
-  onChunk: (c: string) => void,
-  onComplete: (full: string) => void,
-  onError: (err: Error, providers?: string[]) => void,
+  opts: StreamOptions,
 ): Promise<void> {
+  const { onChunk, onReasoning, onComplete, onError } = opts;
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let full = "";
@@ -96,17 +184,23 @@ async function consumeStream(
         }
 
         try {
-          const parsed = JSON.parse(payload);
+          const parsed = JSON.parse(payload) as Record<string, unknown>;
           if (parsed?.error) {
-            const msg = typeof parsed.error === "string" ? parsed.error : (parsed.error?.message ?? JSON.stringify(parsed.error));
-            onError(new Error(msg), []);
+            const { message, code } = parseErrorObject(parsed.error);
+            onError(withStatus(new Error(message), code), []);
             return;
           }
-          const delta = parsed?.choices?.[0]?.delta?.content;
-          if (typeof delta === "string" && delta.length > 0) {
-            full += delta;
-            onChunk(delta);
+
+          const delta = (parsed?.choices as Record<string, unknown>[] | undefined)?.[0]
+            ?.delta as Record<string, unknown> | undefined;
+          const content = delta?.content;
+          if (typeof content === "string" && content.length > 0) {
+            full += content;
+            onChunk(content);
           }
+
+          const reasoning = extractReasoningDelta(delta);
+          if (reasoning) onReasoning?.(reasoning);
         } catch {
           // Skip malformed SSE chunks
         }
@@ -114,7 +208,10 @@ async function consumeStream(
     }
     onComplete(full);
   } catch (err) {
-    if ((err as Error).name === "AbortError" || (err as Error).message?.includes("aborted")) {
+    if (
+      (err as Error).name === "AbortError" ||
+      (err as Error).message?.includes("aborted")
+    ) {
       onComplete(full);
       return;
     }
@@ -125,7 +222,17 @@ async function consumeStream(
 // ── Mobile: XHR Streaming (Bypasses WebView fetch buffering bug) ──────────────
 
 async function fetchStreamingMobileXHR(opts: StreamOptions): Promise<void> {
-  const { model, messages, apiKey, signal, onChunk, onComplete, onError } = opts;
+  const {
+    model,
+    messages,
+    apiKey,
+    signal,
+    generationParams,
+    onChunk,
+    onReasoning,
+    onComplete,
+    onError,
+  } = opts;
 
   return new Promise((resolve) => {
     const xhr = new XMLHttpRequest();
@@ -163,18 +270,24 @@ async function fetchStreamingMobileXHR(opts: StreamOptions): Promise<void> {
         }
 
         try {
-          const parsed = JSON.parse(payload);
+          const parsed = JSON.parse(payload) as Record<string, unknown>;
           if (parsed?.error) {
-            const msg = typeof parsed.error === "string" ? parsed.error : (parsed.error?.message ?? JSON.stringify(parsed.error));
-            onError(new Error(msg), []);
+            const { message, code } = parseErrorObject(parsed.error);
+            onError(withStatus(new Error(message), code), []);
             resolve();
             return;
           }
-          const delta = parsed?.choices?.[0]?.delta?.content;
-          if (typeof delta === "string" && delta.length > 0) {
-            fullText += delta;
-            onChunk(delta);
+
+          const delta = (parsed?.choices as Record<string, unknown>[] | undefined)?.[0]
+            ?.delta as Record<string, unknown> | undefined;
+          const content = delta?.content;
+          if (typeof content === "string" && content.length > 0) {
+            fullText += content;
+            onChunk(content);
           }
+
+          const reasoning = extractReasoningDelta(delta);
+          if (reasoning) onReasoning?.(reasoning);
         } catch {
           // Skip malformed chunks
         }
@@ -186,7 +299,7 @@ async function fetchStreamingMobileXHR(opts: StreamOptions): Promise<void> {
         onComplete(fullText);
       } else {
         const { message, providers } = parseError(xhr.responseText);
-        onError(new Error(message), providers);
+        onError(withStatus(new Error(message), xhr.status), providers);
       }
       resolve();
     };
@@ -206,39 +319,35 @@ async function fetchStreamingMobileXHR(opts: StreamOptions): Promise<void> {
       signal.addEventListener("abort", () => xhr.abort());
     }
 
-    xhr.send(
-      JSON.stringify({
-        model,
-        messages,
-        stream: true,
-        temperature: 0.7,
-      }),
-    );
+    xhr.send(buildRequestBody(model, messages, generationParams));
   });
 }
 
 // ── Web: standard SSE streaming ────────────────────────────────────────────────
 
 async function fetchStreamingWeb(opts: StreamOptions): Promise<void> {
-  const { model, messages, apiKey, signal, onChunk, onComplete, onError } = opts;
+  const {
+    model,
+    messages,
+    apiKey,
+    signal,
+    generationParams,
+    onComplete,
+    onError,
+  } = opts;
 
   try {
     const res = await fetch(`${BASE_URL}/chat/completions`, {
       method: "POST",
       headers: buildHeaders(apiKey),
-      body: JSON.stringify({
-        model,
-        messages,
-        stream: true,
-        temperature: 0.7,
-      }),
+      body: buildRequestBody(model, messages, generationParams),
       signal,
     });
 
     if (!res.ok) {
       const text = await res.text();
       const { message, providers } = parseError(text);
-      onError(new Error(message), providers);
+      onError(withStatus(new Error(message), res.status), providers);
       return;
     }
 
@@ -247,7 +356,7 @@ async function fetchStreamingWeb(opts: StreamOptions): Promise<void> {
       return;
     }
 
-    await consumeStream(res.body, onChunk, onComplete, onError);
+    await consumeStream(res.body, opts);
   } catch (err) {
     if ((err as Error).name === "AbortError") {
       onComplete("");
