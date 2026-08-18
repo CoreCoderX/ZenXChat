@@ -10,6 +10,8 @@
 [![Framer Motion](https://img.shields.io/badge/Framer_Motion-12.42.2-black?style=flat-square&logo=framer)](https://www.framer.com/motion)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22C55E?style=flat-square)](LICENSE)
 
+**Live Preview:** [https://corecoderx.github.io/ZenXChat/](https://corecoderx.github.io/ZenXChat/)
+
 ---
 
 ## ✨ Features
