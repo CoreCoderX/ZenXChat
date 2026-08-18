@@ -168,7 +168,7 @@ function AboutSection() {
         <div className="size-10 rounded-xl overflow-hidden bg-neutral-100 dark:bg-dark-tertiary flex items-center justify-center shrink-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/icon.png"
+            src="/ZenXChat/icon.png"
             alt="App icon"
             className="size-full object-cover"
           />

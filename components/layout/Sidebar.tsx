@@ -72,7 +72,7 @@ export default function Sidebar() {
             <div className="flex items-center justify-between px-3 pb-3 pt-[calc(env(safe-area-inset-top)+12px)] lg:pt-3 border-b border-neutral-100 dark:border-dark-border flex-shrink-0">
               <div className="flex items-center gap-2 px-1">
                 <Image
-                  src="/icon.png"
+                  src="/ZenXChat/icon.png"
                   alt="ZenXChat Logo"
                   width={24}
                   height={24}
@@ -83,7 +83,12 @@ export default function Sidebar() {
                   ZenXChat
                 </span>
               </div>
-              <Button variant="ghost" size="sm" onClick={toggleSidebar} className="lg:hidden">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleSidebar}
+                className="lg:hidden"
+              >
                 <PanelLeftClose className="size-4" />
               </Button>
             </div>
@@ -148,7 +153,8 @@ export default function Sidebar() {
                   onClick={() => {
                     openModal("delete", {
                       title: "Clear all chats?",
-                      message: "Are you sure you want to clear all conversations? This cannot be undone.",
+                      message:
+                        "Are you sure you want to clear all conversations? This cannot be undone.",
                       confirmText: "Clear All",
                       cancelText: "Cancel",
                       onConfirm: () => clearAllConversations(),
